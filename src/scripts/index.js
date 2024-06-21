@@ -4,7 +4,7 @@ import { initializeWebcamCapture } from "./cameraUtils";
 new p5((sk) => {
   let webcamFeed;
   let selections = [];
-  let selectionStart = null;
+  let selectionStart = null; // This will be the center of the selection
   let isSelecting = false;
 
   sk.setup = () => {
@@ -31,19 +31,22 @@ new p5((sk) => {
       sk.noFill();
       sk.stroke(255, 0, 0);
 
-      // Calculate the coordinates and dimensions of the rectangle
-      let x1 = selectionStart.x;
-      let y1 = selectionStart.y;
-      let x2 = sk.mouseX;
-      let y2 = sk.mouseY;
+      // Calculate the coordinates and dimensions from the center to the border
+      let centerX = selectionStart.x;
+      let centerY = selectionStart.y;
+      let edgeX = sk.mouseX;
+      let edgeY = sk.mouseY;
 
-      // Adjust to draw the rectangle slightly outside the actual selection
-      let adjustedX = x1 < x2 ? x1 - 1 : x1 + 1;
-      let adjustedY = y1 < y2 ? y1 - 1 : y1 + 1;
-      let adjustedWidth = x1 < x2 ? x2 - x1 + 2 : x2 - x1 - 2;
-      let adjustedHeight = y1 < y2 ? y2 - y1 + 2 : y2 - y1 - 2;
+      let halfWidth = Math.abs(edgeX - centerX);
+      let halfHeight = Math.abs(edgeY - centerY);
 
-      sk.rect(adjustedX, adjustedY, adjustedWidth, adjustedHeight);
+      // Adjust the rectangle to start from center and expand outwards
+      let rectX = centerX - halfWidth - 1;
+      let rectY = centerY - halfHeight - 1;
+      let rectWidth = 2 * halfWidth + 2;
+      let rectHeight = 2 * halfHeight + 2;
+
+      sk.rect(rectX, rectY, rectWidth, rectHeight);
       sk.pop();
     }
 
@@ -54,19 +57,27 @@ new p5((sk) => {
   };
 
   sk.mousePressed = () => {
-    selectionStart = sk.createVector(sk.mouseX, sk.mouseY);
+    selectionStart = sk.createVector(sk.mouseX, sk.mouseY); // Center point of the selection
     isSelecting = true;
   };
 
   sk.mouseReleased = () => {
     if (selectionStart) {
-      let selectionEnd = sk.createVector(sk.mouseX, sk.mouseY);
       isSelecting = false;
 
-      let x = Math.min(selectionStart.x, selectionEnd.x);
-      let y = Math.min(selectionStart.y, selectionEnd.y);
-      let w = Math.abs(selectionStart.x - selectionEnd.x);
-      let h = Math.abs(selectionStart.y - selectionEnd.y);
+      let centerX = selectionStart.x;
+      let centerY = selectionStart.y;
+      let edgeX = sk.mouseX;
+      let edgeY = sk.mouseY;
+
+      let halfWidth = Math.abs(edgeX - centerX);
+      let halfHeight = Math.abs(edgeY - centerY);
+
+      // Calculate the top-left corner from the center for capturing
+      let x = centerX - halfWidth;
+      let y = centerY - halfHeight;
+      let w = 2 * halfWidth;
+      let h = 2 * halfHeight;
 
       // Capture the selected area directly from the canvas
       let selectedImage = sk.get(x, y, w, h);
@@ -88,4 +99,4 @@ new p5((sk) => {
   });
 });
 
-// REFERENCE: https://www.hockney.com/works/photos/photographic-collages
+// REFERENCE:https://www.hockney.com/works/photos/photographic-collages
