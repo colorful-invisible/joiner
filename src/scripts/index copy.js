@@ -20,38 +20,35 @@ new p5((sk) => {
     sk.scale(-1, 1);
     sk.image(
       webcamFeed,
-      -webcamFeed.scaledWidth,
+      -webcamFeed.width,
       0,
-      webcamFeed.scaledWidth,
-      webcamFeed.scaledHeight
+      webcamFeed.width,
+      webcamFeed.height
     );
     sk.pop();
 
-    // Draw the stored selections with fade-out effect
+    // Draw selections with fade-out effect
     let currentTime = sk.millis();
-    for (let i = selections.length - 1; i >= 0; i--) {
-      // for (let i = 0; i < selections.length; i++) {
-      let { img, x, y, w, h, startTime } = selections[i];
+    selections = selections.filter(({ startTime, img, x, y, w, h }) => {
       let elapsed = currentTime - startTime;
-      let opacity = sk.map(elapsed, 0, fadeDuration, 255, 0); // Fade from full opacity to zero
+      let opacity = sk.map(elapsed, 0, fadeDuration, 255, 0);
 
-      if (opacity <= 0) {
-        // Remove the selection if it's fully transparent
-        selections.splice(i, 1);
-      } else {
+      if (opacity > 0) {
         sk.push();
-        sk.tint(255, opacity); // Apply the opacity
+        sk.tint(255, opacity);
         sk.image(img, x, y, w, h);
         sk.pop();
+        return true;
       }
-    }
+      return false;
+    });
 
     // Draw selection rectangle
     if (isSelecting && selectionStart) {
       sk.push();
       sk.noFill();
       sk.stroke(255, 0, 0);
-      sk.strokeWeight(4);
+      sk.strokeWeight(2);
       let { x, y, w, h } = getSelectionBounds(sk.mouseX, sk.mouseY);
       sk.rect(x, y, w, h);
       sk.pop();
@@ -109,7 +106,6 @@ new p5((sk) => {
     });
   };
 
-  // RESIZE CANVAS WHEN WINDOW IS RESIZED
   window.addEventListener("resize", () => {
     sk.resizeCanvas(window.innerWidth, window.innerHeight);
     sk.background(0, 255, 255);

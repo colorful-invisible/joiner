@@ -605,29 +605,10 @@ new (0, _p5Default.default)((sk)=>{
         sk.scale(-1, 1);
         sk.image(webcamFeed, -webcamFeed.scaledWidth, 0, webcamFeed.scaledWidth, webcamFeed.scaledHeight);
         sk.pop();
-        // Draw the selection rectangle only when selecting
-        if (isSelecting && selectionStart) {
-            sk.push();
-            sk.noFill();
-            sk.stroke(255, 0, 0);
-            // Calculate the coordinates and dimensions from the center to the border
-            let centerX = selectionStart.x;
-            let centerY = selectionStart.y;
-            let edgeX = sk.mouseX;
-            let edgeY = sk.mouseY;
-            let halfWidth = Math.abs(edgeX - centerX);
-            let halfHeight = Math.abs(edgeY - centerY);
-            // Adjust the rectangle to start from center and expand outwards
-            let rectX = centerX - halfWidth - 1;
-            let rectY = centerY - halfHeight - 1;
-            let rectWidth = 2 * halfWidth + 2;
-            let rectHeight = 2 * halfHeight + 2;
-            sk.rect(rectX, rectY, rectWidth, rectHeight);
-            sk.pop();
-        }
         // Draw the stored selections with fade-out effect
         let currentTime = sk.millis();
         for(let i = selections.length - 1; i >= 0; i--){
+            // for (let i = 0; i < selections.length; i++) {
             let { img, x, y, w, h, startTime } = selections[i];
             let elapsed = currentTime - startTime;
             let opacity = sk.map(elapsed, 0, fadeDuration, 255, 0); // Fade from full opacity to zero
@@ -640,38 +621,60 @@ new (0, _p5Default.default)((sk)=>{
                 sk.pop();
             }
         }
+        // Draw selection rectangle
+        if (isSelecting && selectionStart) {
+            sk.push();
+            sk.noFill();
+            sk.stroke(255, 0, 0);
+            sk.strokeWeight(4);
+            let { x, y, w, h } = getSelectionBounds(sk.mouseX, sk.mouseY);
+            sk.rect(x, y, w, h);
+            sk.pop();
+        }
     };
     sk.mousePressed = ()=>{
-        selectionStart = sk.createVector(sk.mouseX, sk.mouseY); // Center point of the selection
+        selectionStart = sk.createVector(sk.mouseX, sk.mouseY);
         isSelecting = true;
     };
     sk.mouseReleased = ()=>{
-        if (selectionStart) {
+        if (isSelecting) {
             isSelecting = false;
-            let centerX = selectionStart.x;
-            let centerY = selectionStart.y;
-            let edgeX = sk.mouseX;
-            let edgeY = sk.mouseY;
-            let halfWidth = Math.abs(edgeX - centerX);
-            let halfHeight = Math.abs(edgeY - centerY);
-            // Calculate the top-left corner from the center for capturing
-            let x = centerX - halfWidth;
-            let y = centerY - halfHeight;
-            let w = 2 * halfWidth;
-            let h = 2 * halfHeight;
-            // Capture the selected area directly from the canvas
-            let selectedImage = sk.get(x, y, w, h);
-            // Store the selected area in the selections array with the current time and initial opacity
-            selections.push({
-                img: selectedImage,
-                x,
-                y,
-                w,
-                h,
-                startTime: sk.millis() + delay
-            });
+            let { x, y, w, h } = getSelectionBounds(sk.mouseX, sk.mouseY);
+            captureSelection(x, y, w, h);
             selectionStart = null;
         }
+    };
+    const getSelectionBounds = (mouseX, mouseY)=>{
+        let centerX = selectionStart.x;
+        let centerY = selectionStart.y;
+        let halfWidth = Math.abs(mouseX - centerX);
+        let halfHeight = Math.abs(mouseY - centerY);
+        return {
+            x: centerX - halfWidth,
+            y: centerY - halfHeight,
+            w: 2 * halfWidth,
+            h: 2 * halfHeight
+        };
+    };
+    const captureSelection = (x, y, w, h)=>{
+        let videoX = webcamFeed.width / webcamFeed.scaledWidth * (sk.width - x - w);
+        let videoY = webcamFeed.height / webcamFeed.scaledHeight * y;
+        let videoW = webcamFeed.width / webcamFeed.scaledWidth * w;
+        let videoH = webcamFeed.height / webcamFeed.scaledHeight * h;
+        let selectedImage = sk.createGraphics(w, h);
+        selectedImage.push();
+        selectedImage.scale(-1, 1);
+        selectedImage.translate(-w, 0);
+        selectedImage.copy(webcamFeed, videoX, videoY, videoW, videoH, 0, 0, w, h);
+        selectedImage.pop();
+        selections.push({
+            img: selectedImage,
+            x,
+            y,
+            w,
+            h,
+            startTime: sk.millis() + delay
+        });
     };
     // RESIZE CANVAS WHEN WINDOW IS RESIZED
     window.addEventListener("resize", ()=>{
