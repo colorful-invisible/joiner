@@ -1,4 +1,4 @@
-# Joiners
+# Joiner
 
 ![Screenshot](readme-images/screenshot_01.png "Screenshot")
 
