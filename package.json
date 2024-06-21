@@ -1,0 +1,14 @@
+{
+  "dependencies": {
+    "p5": "^1.9.2"
+  },
+  "devDependencies": {
+    "parcel": "^2.12.0"
+  },
+  "scripts": {
+    "start": "parcel src/index.html --open",
+    "clean": "rm -rf dist/*",
+    "build:parcel": "parcel build src/index.html",
+    "build": "npm run clean && npm run build:parcel"
+  }
+}
