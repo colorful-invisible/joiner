@@ -4,10 +4,8 @@ import { initializeWebcamCapture } from "./cameraUtils";
 new p5((sk) => {
   let webcamFeed;
   let selections = [];
-  let selectionStart = null;
+  let selectionStart = null; // This will be the center of the selection
   let isSelecting = false;
-  const fadeDuration = 1000;
-  const delay = 20000;
 
   sk.setup = () => {
     sk.createCanvas(sk.windowWidth, sk.windowHeight);
@@ -52,23 +50,10 @@ new p5((sk) => {
       sk.pop();
     }
 
-    // Draw the stored selections with fade-out effect
-    let currentTime = sk.millis();
-    for (let i = selections.length - 1; i >= 0; i--) {
-      let { img, x, y, w, h, startTime } = selections[i];
-      let elapsed = currentTime - startTime;
-      let opacity = sk.map(elapsed, 0, fadeDuration, 255, 0); // Fade from full opacity to zero
-
-      if (opacity <= 0) {
-        // Remove the selection if it's fully transparent
-        selections.splice(i, 1);
-      } else {
-        sk.push();
-        sk.tint(255, opacity); // Apply the opacity
-        sk.image(img, x, y, w, h);
-        sk.pop();
-      }
-    }
+    // Draw the stored selections
+    selections.forEach(({ img, x, y, w, h }) => {
+      sk.image(img, x, y, w, h);
+    });
   };
 
   sk.mousePressed = () => {
@@ -97,15 +82,8 @@ new p5((sk) => {
       // Capture the selected area directly from the canvas
       let selectedImage = sk.get(x, y, w, h);
 
-      // Store the selected area in the selections array with the current time and initial opacity
-      selections.push({
-        img: selectedImage,
-        x,
-        y,
-        w,
-        h,
-        startTime: sk.millis() + delay,
-      });
+      // Store the selected area in the selections array
+      selections.push({ img: selectedImage, x, y, w, h });
 
       selectionStart = null;
     }
@@ -120,3 +98,5 @@ new p5((sk) => {
     }
   });
 });
+
+// REFERENCE:https://www.hockney.com/works/photos/photographic-collages

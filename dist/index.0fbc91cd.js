@@ -591,8 +591,10 @@ var _cameraUtils = require("./cameraUtils");
 new (0, _p5Default.default)((sk)=>{
     let webcamFeed;
     let selections = [];
-    let selectionStart = null; // This will be the center of the selection
+    let selectionStart = null;
     let isSelecting = false;
+    const fadeDuration = 1000;
+    const delay = 20000;
     sk.setup = ()=>{
         sk.createCanvas(sk.windowWidth, sk.windowHeight);
         sk.background(0, 0, 255);
@@ -623,10 +625,21 @@ new (0, _p5Default.default)((sk)=>{
             sk.rect(rectX, rectY, rectWidth, rectHeight);
             sk.pop();
         }
-        // Draw the stored selections
-        selections.forEach(({ img, x, y, w, h })=>{
-            sk.image(img, x, y, w, h);
-        });
+        // Draw the stored selections with fade-out effect
+        let currentTime = sk.millis();
+        for(let i = selections.length - 1; i >= 0; i--){
+            let { img, x, y, w, h, startTime } = selections[i];
+            let elapsed = currentTime - startTime;
+            let opacity = sk.map(elapsed, 0, fadeDuration, 255, 0); // Fade from full opacity to zero
+            if (opacity <= 0) // Remove the selection if it's fully transparent
+            selections.splice(i, 1);
+            else {
+                sk.push();
+                sk.tint(255, opacity); // Apply the opacity
+                sk.image(img, x, y, w, h);
+                sk.pop();
+            }
+        }
     };
     sk.mousePressed = ()=>{
         selectionStart = sk.createVector(sk.mouseX, sk.mouseY); // Center point of the selection
@@ -648,13 +661,14 @@ new (0, _p5Default.default)((sk)=>{
             let h = 2 * halfHeight;
             // Capture the selected area directly from the canvas
             let selectedImage = sk.get(x, y, w, h);
-            // Store the selected area in the selections array
+            // Store the selected area in the selections array with the current time and initial opacity
             selections.push({
                 img: selectedImage,
                 x,
                 y,
                 w,
-                h
+                h,
+                startTime: sk.millis() + delay
             });
             selectionStart = null;
         }
@@ -665,7 +679,7 @@ new (0, _p5Default.default)((sk)=>{
         sk.background(0, 255, 255);
         if (webcamFeed) webcamFeed = (0, _cameraUtils.initializeWebcamCapture)(sk);
     });
-}); // REFERENCE:https://www.hockney.com/works/photos/photographic-collages
+});
 
 },{"p5":"7Uk5U","./cameraUtils":"2RWfO","@parcel/transformer-js/src/esmodule-helpers.js":"gkKU3"}],"7Uk5U":[function(require,module,exports) {
 /*! p5.js v1.9.4 May 21, 2024 */ var global = arguments[3];
