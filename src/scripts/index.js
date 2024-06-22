@@ -12,15 +12,15 @@ new p5((sk) => {
   const fadeDuration = 1000;
   const delayInSeconds = 20;
   const delay = delayInSeconds * 1000;
-
-  const START_DISTANCE_THRESHOLD = 60; // Distance to start the selection
-  const END_DISTANCE_THRESHOLD = 60; // Distance to end the selection
-
+  //
   const avgPos = averageLandmarkPosition(4);
 
   sk.setup = () => {
     sk.createCanvas(sk.windowWidth, sk.windowHeight);
     sk.background(0, 0, 255);
+    sk.textSize(20);
+    sk.textAlign(sk.CENTER, sk.CENTER);
+
     camFeed = initializeCamCapture(sk, mediaPipe);
   };
 
@@ -36,7 +36,7 @@ new p5((sk) => {
     );
     sk.pop();
 
-    // Get Landmarks
+    // GET LANDMARKS
     const landmarksIndex = [4, 8];
     const landmarks = getMappedLandmarks(
       sk,
@@ -66,24 +66,16 @@ new p5((sk) => {
     let distTI1 = Math.floor(sk.dist(thumb1X, thumb1Y, index1X, index1Y));
     let distTI2 = Math.floor(sk.dist(thumb2X, thumb2Y, index2X, index2Y));
 
-    // centerTIX = (thumb1X + thumb2X + index1X + index2X) / 4;
-    // centerTIY = (thumb1Y + thumb2Y + index1Y + index2Y) / 4;
-
-    sk.push();
-    sk.fill(255, 255, 0);
-    sk.noStroke();
-    sk.textSize(20);
-    sk.text("1", centerTI1X, centerTI1Y);
-    sk.text("2", centerTI2X, centerTI2Y);
-
-    // sk.ellipse(centerTIX, centerTIY, 50);
-    sk.text(`Distance: ${distForSelection}`, 20, 20);
-    sk.pop();
-
     // Handle selection logic based on distance
-    if (distForSelection < 60 && !isSelecting) {
+    if (
+      distForSelection < 60 &&
+      distTI1 < 60 &&
+      distTI2 < 60 &&
+      60 &&
+      !isSelecting
+    ) {
       isSelecting = true;
-    } else if (distTI1 > 60 && distTI2 > 60 && isSelecting) {
+    } else if (distTI1 > 60 && distTI2 > 40 && isSelecting) {
       isSelecting = false;
       let { x, y, w, h } = getSelectionBounds(
         centerTI1X,
@@ -104,7 +96,7 @@ new p5((sk) => {
         selections.splice(i, 1);
       } else {
         sk.push();
-        sk.tint(255, 0, 0, opacity);
+        sk.tint(255, 240, 240, opacity);
         sk.image(img, x, y, w, h);
         sk.pop();
       }
@@ -125,6 +117,20 @@ new p5((sk) => {
       sk.rect(x, y, w, h);
       sk.pop();
     }
+
+    sk.push();
+    sk.fill(255);
+    sk.noStroke();
+    sk.ellipse(centerTI1X, centerTI1Y, 24);
+    sk.ellipse(centerTI2X, centerTI2Y, 24);
+    sk.pop();
+
+    sk.push();
+    sk.fill(0);
+    sk.text("1", centerTI1X, centerTI1Y);
+    sk.text("2", centerTI2X, centerTI2Y);
+    sk.text(`Selection: ${distForSelection}`, 20, 20);
+    sk.pop();
   };
 
   const getSelectionBounds = (startX, startY, endX, endY) => {
