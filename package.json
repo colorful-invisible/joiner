@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "@mediapipe/tasks-vision": "^0.10.14",
     "p5": "^1.9.2"
   },
   "devDependencies": {

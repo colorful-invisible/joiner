@@ -1,102 +1,151 @@
 import p5 from "p5";
-import { initializeWebcamCapture } from "./cameraUtils";
+import { mediaPipe } from "./handsModelMediaPipe";
+import { initializeCamCapture } from "./cameraUtils";
+import { getMappedLandmarks } from "./landmarksHandler";
+import { averageLandmarkPosition } from "./utils";
 
 new p5((sk) => {
-  let webcamFeed;
+  let camFeed;
   let selections = [];
-  let selectionStart = null;
   let isSelecting = false;
+  //
   const fadeDuration = 1000;
-  const delay = 20000;
+  const delayInSeconds = 20;
+  const delay = delayInSeconds * 1000;
+
+  const START_DISTANCE_THRESHOLD = 60; // Distance to start the selection
+  const END_DISTANCE_THRESHOLD = 60; // Distance to end the selection
+
+  const avgPos = averageLandmarkPosition(4);
 
   sk.setup = () => {
     sk.createCanvas(sk.windowWidth, sk.windowHeight);
     sk.background(0, 0, 255);
-    webcamFeed = initializeWebcamCapture(sk);
+    camFeed = initializeCamCapture(sk, mediaPipe);
   };
 
   sk.draw = () => {
     sk.push();
     sk.scale(-1, 1);
     sk.image(
-      webcamFeed,
-      -webcamFeed.scaledWidth,
+      camFeed,
+      -camFeed.scaledWidth,
       0,
-      webcamFeed.scaledWidth,
-      webcamFeed.scaledHeight
+      camFeed.scaledWidth,
+      camFeed.scaledHeight
     );
     sk.pop();
 
-    // Draw the stored selections with fade-out effect
+    // Get Landmarks
+    const landmarksIndex = [4, 8];
+    const landmarks = getMappedLandmarks(
+      sk,
+      mediaPipe,
+      camFeed,
+      landmarksIndex
+    );
+
+    const thumb1X = avgPos("t1X", landmarks.LM0_4X);
+    const thumb1Y = avgPos("t1y", landmarks.LM0_4Y);
+    const thumb2X = avgPos("t2X", landmarks.LM1_4X);
+    const thumb2Y = avgPos("t2Y", landmarks.LM1_4Y);
+    const index1X = avgPos("i1X", landmarks.LM0_8X);
+    const index1Y = avgPos("i1Y", landmarks.LM0_8Y);
+    const index2X = avgPos("i2X", landmarks.LM1_8X);
+    const index2Y = avgPos("i2Y", landmarks.LM1_8Y);
+
+    const centerTI1X = (thumb1X + index1X) / 2;
+    const centerTI1Y = (thumb1Y + index1Y) / 2;
+    const centerTI2X = (thumb2X + index2X) / 2;
+    const centerTI2Y = (thumb2Y + index2Y) / 2;
+
+    let distForSelection = Math.floor(
+      sk.dist(centerTI1X, centerTI1Y, centerTI2X, centerTI2Y)
+    );
+
+    let distTI1 = Math.floor(sk.dist(thumb1X, thumb1Y, index1X, index1Y));
+    let distTI2 = Math.floor(sk.dist(thumb2X, thumb2Y, index2X, index2Y));
+
+    // centerTIX = (thumb1X + thumb2X + index1X + index2X) / 4;
+    // centerTIY = (thumb1Y + thumb2Y + index1Y + index2Y) / 4;
+
+    sk.push();
+    sk.fill(255, 255, 0);
+    sk.noStroke();
+    sk.textSize(20);
+    sk.text("1", centerTI1X, centerTI1Y);
+    sk.text("2", centerTI2X, centerTI2Y);
+
+    // sk.ellipse(centerTIX, centerTIY, 50);
+    sk.text(`Distance: ${distForSelection}`, 20, 20);
+    sk.pop();
+
+    // Handle selection logic based on distance
+    if (distForSelection < 60 && !isSelecting) {
+      isSelecting = true;
+    } else if (distTI1 > 60 && distTI2 > 60 && isSelecting) {
+      isSelecting = false;
+      let { x, y, w, h } = getSelectionBounds(
+        centerTI1X,
+        centerTI1Y,
+        centerTI2X,
+        centerTI2Y
+      );
+      captureSelection(x, y, w, h);
+    }
+
     let currentTime = sk.millis();
     for (let i = selections.length - 1; i >= 0; i--) {
-      // for (let i = 0; i < selections.length; i++) {
       let { img, x, y, w, h, startTime } = selections[i];
       let elapsed = currentTime - startTime;
-      let opacity = sk.map(elapsed, 0, fadeDuration, 255, 0); // Fade from full opacity to zero
+      let opacity = sk.map(elapsed, 0, fadeDuration, 255, 0);
 
       if (opacity <= 0) {
-        // Remove the selection if it's fully transparent
         selections.splice(i, 1);
       } else {
         sk.push();
-        sk.tint(255, opacity); // Apply the opacity
+        sk.tint(255, 0, 0, opacity);
         sk.image(img, x, y, w, h);
         sk.pop();
       }
     }
 
     // Draw selection rectangle
-    if (isSelecting && selectionStart) {
+    if (isSelecting) {
       sk.push();
       sk.noFill();
       sk.stroke(255, 0, 0);
       sk.strokeWeight(4);
-      let { x, y, w, h } = getSelectionBounds(sk.mouseX, sk.mouseY);
+      let { x, y, w, h } = getSelectionBounds(
+        centerTI1X,
+        centerTI1Y,
+        centerTI2X,
+        centerTI2Y
+      );
       sk.rect(x, y, w, h);
       sk.pop();
     }
   };
 
-  sk.mousePressed = () => {
-    selectionStart = sk.createVector(sk.mouseX, sk.mouseY);
-    isSelecting = true;
-  };
-
-  sk.mouseReleased = () => {
-    if (isSelecting) {
-      isSelecting = false;
-      let { x, y, w, h } = getSelectionBounds(sk.mouseX, sk.mouseY);
-      captureSelection(x, y, w, h);
-      selectionStart = null;
-    }
-  };
-
-  const getSelectionBounds = (mouseX, mouseY) => {
-    let centerX = selectionStart.x;
-    let centerY = selectionStart.y;
-    let halfWidth = Math.abs(mouseX - centerX);
-    let halfHeight = Math.abs(mouseY - centerY);
-    return {
-      x: centerX - halfWidth,
-      y: centerY - halfHeight,
-      w: 2 * halfWidth,
-      h: 2 * halfHeight,
-    };
+  const getSelectionBounds = (startX, startY, endX, endY) => {
+    let x = Math.min(startX, endX);
+    let y = Math.min(startY, endY);
+    let w = Math.abs(startX - endX);
+    let h = Math.abs(startY - endY);
+    return { x, y, w, h };
   };
 
   const captureSelection = (x, y, w, h) => {
-    let videoX =
-      (webcamFeed.width / webcamFeed.scaledWidth) * (sk.width - x - w);
-    let videoY = (webcamFeed.height / webcamFeed.scaledHeight) * y;
-    let videoW = (webcamFeed.width / webcamFeed.scaledWidth) * w;
-    let videoH = (webcamFeed.height / webcamFeed.scaledHeight) * h;
+    let videoX = (camFeed.width / camFeed.scaledWidth) * (sk.width - x - w);
+    let videoY = (camFeed.height / camFeed.scaledHeight) * y;
+    let videoW = (camFeed.width / camFeed.scaledWidth) * w;
+    let videoH = (camFeed.height / camFeed.scaledHeight) * h;
 
     let selectedImage = sk.createGraphics(w, h);
     selectedImage.push();
     selectedImage.scale(-1, 1);
     selectedImage.translate(-w, 0);
-    selectedImage.copy(webcamFeed, videoX, videoY, videoW, videoH, 0, 0, w, h);
+    selectedImage.copy(camFeed, videoX, videoY, videoW, videoH, 0, 0, w, h);
     selectedImage.pop();
 
     selections.push({
@@ -109,12 +158,11 @@ new p5((sk) => {
     });
   };
 
-  // RESIZE CANVAS WHEN WINDOW IS RESIZED
   window.addEventListener("resize", () => {
     sk.resizeCanvas(window.innerWidth, window.innerHeight);
     sk.background(0, 255, 255);
-    if (webcamFeed) {
-      webcamFeed = initializeWebcamCapture(sk);
+    if (camFeed) {
+      camFeed = initializeCamCapture(sk, mediaPipe);
     }
   });
 });
