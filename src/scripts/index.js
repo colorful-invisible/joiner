@@ -86,11 +86,22 @@ new p5((sk) => {
       captureSelection(x, y, w, h);
     }
 
+    const distForClear1 = Math.floor(
+      sk.dist(centerTI1X, centerTI1Y, sk.width, sk.height)
+    );
+    const distForClear2 = Math.floor(
+      sk.dist(centerTI2X, centerTI2Y, sk.width, sk.height)
+    );
+
     let currentTime = sk.millis();
     for (let i = selections.length - 1; i >= 0; i--) {
       let { img, x, y, w, h, startTime } = selections[i];
       let elapsed = currentTime - startTime;
       let opacity = sk.map(elapsed, 0, fadeDuration, 255, 0);
+
+      if (distForClear1 < 100 || distForClear2 < 100) {
+        opacity = 0;
+      }
 
       if (opacity <= 0) {
         selections.splice(i, 1);
@@ -119,7 +130,7 @@ new p5((sk) => {
     }
 
     sk.push();
-    sk.fill(255);
+    sk.fill(255, 255, 255, 255);
     sk.noStroke();
     sk.ellipse(centerTI1X, centerTI1Y, 24);
     sk.ellipse(centerTI2X, centerTI2Y, 24);
