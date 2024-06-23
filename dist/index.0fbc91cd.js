@@ -662,7 +662,11 @@ new (0, _p5Default.default)((sk)=>{
             sk.push();
             sk.noFill();
             sk.stroke(255, 0, 0);
-            sk.strokeWeight(4);
+            strokeDash(sk, [
+                5,
+                5
+            ]);
+            sk.strokeWeight(2);
             let { x, y, w, h } = getSelectionBounds(centerTI1X, centerTI1Y, centerTI2X, centerTI2Y);
             sk.rect(x, y, w, h);
             sk.pop();
@@ -677,7 +681,7 @@ new (0, _p5Default.default)((sk)=>{
         sk.fill(0);
         sk.text("1", centerTI1X, centerTI1Y);
         sk.text("2", centerTI2X, centerTI2Y);
-        sk.text(`Selection: ${distForSelection}`, 20, 20);
+        sk.text(`Selection: ${distForSelection}`, 100, 20);
         sk.pop();
     };
     const getSelectionBounds = (startX, startY, endX, endY)=>{
@@ -718,6 +722,9 @@ new (0, _p5Default.default)((sk)=>{
         if (camFeed) camFeed = (0, _cameraUtils.initializeCamCapture)(sk, (0, _handsModelMediaPipe.mediaPipe));
     });
 });
+function strokeDash(sk, list) {
+    sk.drawingContext.setLineDash(list);
+}
 
 },{"p5":"7Uk5U","./cameraUtils":"2RWfO","@parcel/transformer-js/src/esmodule-helpers.js":"gkKU3","./handsModelMediaPipe":"2jplw","./landmarksHandler":"44KuU","./utils":"bVlgj"}],"7Uk5U":[function(require,module,exports) {
 /*! p5.js v1.9.4 May 21, 2024 */ var global = arguments[3];

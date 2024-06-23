@@ -118,7 +118,8 @@ new p5((sk) => {
       sk.push();
       sk.noFill();
       sk.stroke(255, 0, 0);
-      sk.strokeWeight(4);
+      strokeDash(sk, [5, 5]);
+      sk.strokeWeight(2);
       let { x, y, w, h } = getSelectionBounds(
         centerTI1X,
         centerTI1Y,
@@ -140,7 +141,7 @@ new p5((sk) => {
     sk.fill(0);
     sk.text("1", centerTI1X, centerTI1Y);
     sk.text("2", centerTI2X, centerTI2Y);
-    sk.text(`Selection: ${distForSelection}`, 20, 20);
+    sk.text(`Selection: ${distForSelection}`, 100, 20);
     sk.pop();
   };
 
@@ -183,3 +184,7 @@ new p5((sk) => {
     }
   });
 });
+
+function strokeDash(sk, list) {
+  sk.drawingContext.setLineDash(list);
+}
