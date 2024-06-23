@@ -662,11 +662,11 @@ new (0, _p5Default.default)((sk)=>{
             sk.push();
             sk.noFill();
             sk.stroke(255, 0, 0);
+            sk.strokeWeight(2);
             strokeDash(sk, [
                 5,
                 5
             ]);
-            sk.strokeWeight(2);
             let { x, y, w, h } = getSelectionBounds(centerTI1X, centerTI1Y, centerTI2X, centerTI2Y);
             sk.rect(x, y, w, h);
             sk.pop();

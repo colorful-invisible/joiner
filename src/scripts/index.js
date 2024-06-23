@@ -118,8 +118,9 @@ new p5((sk) => {
       sk.push();
       sk.noFill();
       sk.stroke(255, 0, 0);
-      strokeDash(sk, [5, 5]);
       sk.strokeWeight(2);
+      strokeDash(sk, [5, 5]);
+
       let { x, y, w, h } = getSelectionBounds(
         centerTI1X,
         centerTI1Y,
