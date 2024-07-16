@@ -1,13 +1,12 @@
 export function initializeCamCapture(sketch, mediaPipeHandler) {
   const camFeed = sketch.createCapture(
     {
+      flipped: true,
       audio: false,
-      video: { facingMode: "user" },
     },
-    (stream) => {
-      console.log(stream.getTracks()[0].getSettings());
-      adjustCamFeedDimensions(sketch, camFeed);
-      mediaPipeHandler.predictWebcam(camFeed); // Assuming a prediction handling function
+    () => {
+      calculateVideoDimensions(sketch, camFeed);
+      mediaPipeHandler.predictWebcam(camFeed);
     }
   );
   camFeed.elt.setAttribute("playsinline", "");
@@ -15,15 +14,26 @@ export function initializeCamCapture(sketch, mediaPipeHandler) {
   return camFeed;
 }
 
-function adjustCamFeedDimensions(sketch, camFeed) {
-  const aspectRatio = camFeed.width / camFeed.height;
-  const canvasAspectRatio = sketch.width / sketch.height;
+function calculateVideoDimensions(sketch, feed) {
+  let canvasRatio = sketch.width / sketch.height;
+  let videoRatio = feed.width / feed.height;
+  let x = 0;
+  let y = 0;
+  let w = sketch.width;
+  let h = sketch.height;
 
-  if (aspectRatio > canvasAspectRatio) {
-    camFeed.scaledHeight = sketch.height;
-    camFeed.scaledWidth = camFeed.scaledHeight * aspectRatio;
+  if (canvasRatio > videoRatio) {
+    // Canvas is wider than video
+    h = sketch.width / videoRatio;
+    y = (sketch.height - h) / 2;
   } else {
-    camFeed.scaledWidth = sketch.width;
-    camFeed.scaledHeight = camFeed.scaledWidth / aspectRatio;
+    // Canvas is taller than video
+    w = sketch.height * videoRatio;
+    x = (sketch.width - w) / 2;
   }
+
+  feed.scaledWidth = w;
+  feed.scaledHeight = h;
+  feed.x = x;
+  feed.y = y;
 }
