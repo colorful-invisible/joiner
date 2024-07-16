@@ -232,7 +232,6 @@ new p5((sk) => {
   };
 
   sk.windowResized = () => {
-    sk.background(255, 0, 0);
     sk.resizeCanvas(window.innerWidth, window.innerHeight);
     calculateVideoDimensions(sk, camFeed);
   };

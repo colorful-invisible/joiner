@@ -761,7 +761,6 @@ new (0, _p5Default.default)((sk)=>{
         };
     };
     sk.windowResized = ()=>{
-        sk.background(255, 0, 0);
         sk.resizeCanvas(window.innerWidth, window.innerHeight);
         (0, _cameraUtils.calculateVideoDimensions)(sk, camFeed);
     };
