@@ -746,7 +746,7 @@ new (0, _p5Default.default)((sk)=>{
         });
         flash = flashFeedback(x, y, w, h);
     };
-    function flashFeedback(x, y, w, h) {
+    const flashFeedback = (x, y, w, h)=>{
         let flashDuration = 500;
         let flashOpacity = 124;
         let flashStartTime = sk.millis();
@@ -759,12 +759,12 @@ new (0, _p5Default.default)((sk)=>{
             flashStartTime,
             flashOpacity
         };
-    }
-    window.addEventListener("resize", ()=>{
-        sk.resizeCanvas(window.innerWidth, window.windowHeight);
-        sk.background(0, 255, 255);
-        if (camFeed) camFeed = (0, _cameraUtils.initializeCamCapture)(sk, (0, _handsModelMediaPipe.mediaPipe));
-    });
+    };
+    sk.windowResized = ()=>{
+        sk.background(255, 0, 0);
+        sk.resizeCanvas(window.innerWidth, window.innerHeight);
+        (0, _cameraUtils.calculateVideoDimensions)(sk, camFeed);
+    };
 });
 function strokeDash(sk, list) {
     sk.drawingContext.setLineDash(list);
@@ -32795,6 +32795,7 @@ function strokeDash(sk, list) {
 var parcelHelpers = require("@parcel/transformer-js/src/esmodule-helpers.js");
 parcelHelpers.defineInteropFlag(exports);
 parcelHelpers.export(exports, "initializeCamCapture", ()=>initializeCamCapture);
+parcelHelpers.export(exports, "calculateVideoDimensions", ()=>calculateVideoDimensions);
 function initializeCamCapture(sketch, mediaPipeHandler) {
     const camFeed = sketch.createCapture({
         flipped: true,

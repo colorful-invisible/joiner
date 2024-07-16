@@ -1,6 +1,6 @@
 import p5 from "p5";
 import { mediaPipe } from "./handsModelMediaPipe";
-import { initializeCamCapture } from "./cameraUtils";
+import { initializeCamCapture, calculateVideoDimensions } from "./cameraUtils";
 import { getMappedLandmarks } from "./landmarksHandler";
 import { averageLandmarkPosition } from "./utils";
 
@@ -215,7 +215,7 @@ new p5((sk) => {
     flash = flashFeedback(x, y, w, h);
   };
 
-  function flashFeedback(x, y, w, h) {
+  const flashFeedback = (x, y, w, h) => {
     let flashDuration = 500;
     let flashOpacity = 124;
     let flashStartTime = sk.millis();
@@ -229,15 +229,13 @@ new p5((sk) => {
       flashStartTime,
       flashOpacity,
     };
-  }
+  };
 
-  window.addEventListener("resize", () => {
-    sk.resizeCanvas(window.innerWidth, window.windowHeight);
-    sk.background(0, 255, 255);
-    if (camFeed) {
-      camFeed = initializeCamCapture(sk, mediaPipe);
-    }
-  });
+  sk.windowResized = () => {
+    sk.background(255, 0, 0);
+    sk.resizeCanvas(window.innerWidth, window.innerHeight);
+    calculateVideoDimensions(sk, camFeed);
+  };
 });
 
 function strokeDash(sk, list) {

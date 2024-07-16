@@ -14,7 +14,7 @@ export function initializeCamCapture(sketch, mediaPipeHandler) {
   return camFeed;
 }
 
-function calculateVideoDimensions(sketch, feed) {
+export function calculateVideoDimensions(sketch, feed) {
   let canvasRatio = sketch.width / sketch.height;
   let videoRatio = feed.width / feed.height;
   let x = 0;
