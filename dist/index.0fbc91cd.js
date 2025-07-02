@@ -603,6 +603,12 @@ new (0, _p5Default.default)((sk)=>{
     const delay = delayInSeconds * 1000;
     //
     const avgPos = (0, _utils.averageLandmarkPosition)(4);
+    // State variables for selection and clear
+    let selectionStart = null;
+    let selectionEnd = null;
+    let lastValidHandPos = null;
+    let clearStartTime = null;
+    const clearHoldDuration = 1000; // 1 second to trigger clear
     sk.setup = ()=>{
         sk.createCanvas(sk.windowWidth, sk.windowHeight);
         sk.background(0);
@@ -620,30 +626,50 @@ new (0, _p5Default.default)((sk)=>{
             8
         ];
         const landmarks = (0, _landmarksHandler.getMappedLandmarks)(sk, (0, _handsModelMediaPipe.mediaPipe), camFeed, landmarksIndex);
-        let thumb1X = avgPos("t1X", landmarks.LM0_4X);
-        let thumb1Y = avgPos("t1y", landmarks.LM0_4Y);
-        let thumb2X = avgPos("t2X", landmarks.LM1_4X);
-        let thumb2Y = avgPos("t2Y", landmarks.LM1_4Y);
-        let index1X = avgPos("i1X", landmarks.LM0_8X);
-        let index1Y = avgPos("i1Y", landmarks.LM0_8Y);
-        let index2X = avgPos("i2X", landmarks.LM1_8X);
-        let index2Y = avgPos("i2Y", landmarks.LM1_8Y);
-        let centerTI1X = (thumb1X + index1X) / 2;
-        let centerTI1Y = (thumb1Y + index1Y) / 2;
-        let centerTI2X = (thumb2X + index2X) / 2;
-        let centerTI2Y = (thumb2Y + index2Y) / 2;
-        let distForSelection = Math.floor(sk.dist(centerTI1X, centerTI1Y, centerTI2X, centerTI2Y));
-        let distTI1 = Math.floor(sk.dist(thumb1X, thumb1Y, index1X, index1Y));
-        let distTI2 = Math.floor(sk.dist(thumb2X, thumb2Y, index2X, index2Y));
-        let distForClear1 = Math.floor(sk.dist(centerTI1X, centerTI1Y, 80, sk.height - 80));
-        let distForClear2 = Math.floor(sk.dist(centerTI2X, centerTI2Y, 80, sk.height - 80));
+        let thumbX = avgPos("tX", landmarks.LM0_4X);
+        let thumbY = avgPos("tY", landmarks.LM0_4Y);
+        let indexX = avgPos("iX", landmarks.LM0_8X);
+        let indexY = avgPos("iY", landmarks.LM0_8Y);
+        let centerX = (thumbX + indexX) / 2;
+        let centerY = (thumbY + indexY) / 2;
+        // Update last valid position
+        if (isFinite(centerX) && isFinite(centerY)) lastValidHandPos = {
+            x: centerX,
+            y: centerY
+        };
+        // Calculate distance between thumb and index finger
+        let distThumbIndex = Math.floor(sk.dist(thumbX, thumbY, indexX, indexY));
+        // Determine if fingers are pinched or released
+        let isPinched = distThumbIndex < 50; // Adjust this threshold as needed
+        let isReleased = distThumbIndex > 100; // Adjust this threshold as needed
         // SELECTION LOGIC
-        if (distForSelection < 60 && distTI1 < 60 && distTI2 < 60 && 60 && !isSelecting) isSelecting = true;
-        else if (distTI1 > 60 && distTI2 > 40 && isSelecting) {
-            isSelecting = false;
-            let { x, y, w, h } = getSelectionBounds(centerTI1X, centerTI1Y, centerTI2X, centerTI2Y);
-            captureSelection(x, y, w, h);
+        if (!isSelecting && isPinched) {
+            isSelecting = true;
+            selectionStart = {
+                ...lastValidHandPos
+            };
+        } else if (isSelecting) {
+            selectionEnd = {
+                ...lastValidHandPos
+            };
+            if (isReleased) {
+                isSelecting = false;
+                let { x, y, w, h } = getSelectionBounds(selectionStart.x, selectionStart.y, selectionEnd.x, selectionEnd.y);
+                captureSelection(x, y, w, h);
+                // Reset selection state
+                selectionStart = null;
+                selectionEnd = null;
+            }
         }
+        // CLEAR LOGIC
+        let distForClear = lastValidHandPos ? Math.floor(sk.dist(lastValidHandPos.x, lastValidHandPos.y, 80, sk.height - 80)) : Infinity;
+        if (isReleased && distForClear < 100) {
+            if (!clearStartTime) clearStartTime = sk.millis();
+            else if (sk.millis() - clearStartTime > clearHoldDuration) {
+                snapshots = []; // Clear all snapshots
+                clearStartTime = null; // Reset the timer
+            }
+        } else clearStartTime = null; // Reset the timer if hand moves away or closes
         // SNAPSHOT LOGIC
         let currentTime = sk.millis();
         for(let i = snapshots.length - 1; i >= 0; i--){
@@ -653,7 +679,6 @@ new (0, _p5Default.default)((sk)=>{
                 let elapsed = currentTime - startTime;
                 opacity = sk.map(elapsed, 0, fadeDuration, 255, 0);
             }
-            if (distForClear1 < 60 || distForClear2 < 60) opacity = 0;
             if (opacity <= 0) snapshots.splice(i, 1);
             else {
                 sk.push();
@@ -663,7 +688,7 @@ new (0, _p5Default.default)((sk)=>{
             }
         }
         // DRAW SELECTION RECTANGLE
-        if (isSelecting) {
+        if (isSelecting && selectionStart && selectionEnd) {
             sk.push();
             sk.noFill();
             sk.stroke(255, 0, 0);
@@ -672,7 +697,7 @@ new (0, _p5Default.default)((sk)=>{
                 5,
                 5
             ]);
-            let { x, y, w, h } = getSelectionBounds(centerTI1X, centerTI1Y, centerTI2X, centerTI2Y);
+            let { x, y, w, h } = getSelectionBounds(selectionStart.x, selectionStart.y, selectionEnd.x, selectionEnd.y);
             sk.rect(x, y, w, h);
             sk.pop();
         }
@@ -689,29 +714,35 @@ new (0, _p5Default.default)((sk)=>{
                 sk.pop();
             } else flash = null;
         }
-        sk.push();
-        sk.fill(255, 255, 255, 255);
-        sk.noStroke();
-        sk.ellipse(centerTI1X, centerTI1Y, 28);
-        sk.ellipse(centerTI2X, centerTI2Y, 28);
-        sk.pop();
-        sk.push();
-        sk.fill(0);
-        sk.text("1", centerTI1X, centerTI1Y);
-        sk.text("2", centerTI2X, centerTI2Y);
-        sk.pop();
-        // CLEAR AREA ELEMENT
-        if (distForClear1 < 180 || distForClear2 < 180) {
+        // Draw hand position
+        if (lastValidHandPos) {
             sk.push();
-            sk.fill(255, 255, 255, 40);
-            sk.stroke(255);
-            sk.strokeWeight(2);
-            sk.ellipse(80, sk.height - 80, 120);
-            sk.pop();
-            sk.push();
-            sk.fill(255);
+            sk.fill(255, 255, 255, 255);
             sk.noStroke();
-            sk.text("CLEAR", 80, sk.height - 80);
+            sk.ellipse(lastValidHandPos.x, lastValidHandPos.y, 28);
+            sk.fill(0);
+            sk.text(isSelecting ? "Selecting" : isPinched ? "Pinched" : "Released", lastValidHandPos.x, lastValidHandPos.y);
+            sk.pop();
+        }
+        // CLEAR AREA ELEMENT
+        sk.push();
+        sk.fill(255, 255, 255, 40);
+        sk.stroke(255);
+        sk.strokeWeight(2);
+        sk.ellipse(80, sk.height - 80, 120);
+        sk.pop();
+        sk.push();
+        sk.fill(255);
+        sk.noStroke();
+        sk.text("CLEAR", 80, sk.height - 80);
+        sk.pop();
+        // Show clear progress
+        if (clearStartTime) {
+            let progress = (sk.millis() - clearStartTime) / clearHoldDuration;
+            sk.push();
+            sk.noFill();
+            sk.stroke(255, 0, 0);
+            sk.arc(80, sk.height - 80, 140, 140, -sk.HALF_PI, -sk.HALF_PI + progress * sk.TWO_PI);
             sk.pop();
         }
     };
