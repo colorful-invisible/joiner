@@ -1,6 +1,5 @@
-// Version 2.0 - 23.06.2025
-
-export function initializeCamCapture(sk, mediaPipeHandler) {
+// Version 2.1 - 03.07.2025 - Gesture Recognizer
+export function initializeCamCapture(sk, gesturePipe) {
   const camFeed = sk.createCapture(
     {
       flipped: true,
@@ -12,9 +11,9 @@ export function initializeCamCapture(sk, mediaPipeHandler) {
       },
     },
     (stream) => {
-      console.log(stream.getTracks()[0].getSettings());
+      console.log("Camera initialized:", stream.getTracks()[0].getSettings());
       updateFeedDimensions(sk, camFeed, false);
-      mediaPipeHandler.predictWebcam(camFeed);
+      gesturePipe.predict(camFeed);
     }
   );
 
@@ -30,23 +29,20 @@ export function updateFeedDimensions(sk, feed, fitToHeight = false) {
   const canvasRatio = sk.width / sk.height;
   const videoRatio = feed.width / feed.height;
 
-  let x = 0;
-  let y = 0;
-  let w = sk.width;
-  let h = sk.height;
+  let x = 0,
+    y = 0,
+    w = sk.width,
+    h = sk.height;
 
   if (canvasRatio > videoRatio) {
     if (fitToHeight) {
-      // Fit to canvas height, center horizontally, Portrait mode
       w = sk.height * videoRatio;
       x = (sk.width - w) / 2;
     } else {
-      // Fit to canvas width, center vertically, Landscape mode
       h = sk.width / videoRatio;
       y = (sk.height - h) / 2;
     }
   } else {
-    // Video is wider - fit to height, center horizontally
     w = sk.height * videoRatio;
     x = (sk.width - w) / 2;
   }

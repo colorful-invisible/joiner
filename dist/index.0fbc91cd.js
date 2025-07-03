@@ -587,151 +587,55 @@ function hmrAccept(bundle /*: ParcelRequire */ , id /*: string */ ) {
 var parcelHelpers = require("@parcel/transformer-js/src/esmodule-helpers.js");
 var _p5 = require("p5");
 var _p5Default = parcelHelpers.interopDefault(_p5);
-var _handsModelMediaPipe = require("./handsModelMediaPipe");
+var _gestureRecognizer = require("./gestureRecognizer");
 var _videoFeedUtils = require("./videoFeedUtils");
-var _landmarksHandler = require("./landmarksHandler");
 new (0, _p5Default.default)((sk)=>{
     let camFeed;
     let snapshots = [];
     let isSelecting = false;
     let flash = null;
-    //
     let hasFade = true;
     const fadeDuration = 1000;
-    const delayInSeconds = 20;
-    const delay = delayInSeconds * 1000;
-    // State variables for selection and clear
+    const delay = 20000;
     let selectionStart = null;
     let selectionEnd = null;
     let lastValidHandPos = null;
-    let clearStartTime = null;
-    const clearHoldDuration = 1000; // 1 second to trigger clear
     sk.setup = ()=>{
         sk.createCanvas(sk.windowWidth, sk.windowHeight);
         sk.background(0);
         sk.textSize(20);
         sk.textAlign(sk.CENTER, sk.CENTER);
-        camFeed = (0, _videoFeedUtils.initializeCamCapture)(sk, (0, _handsModelMediaPipe.mediaPipe));
+        camFeed = (0, _videoFeedUtils.initializeCamCapture)(sk, (0, _gestureRecognizer.gesturePipe));
     };
     sk.draw = ()=>{
         try {
-            sk.push();
             sk.image(camFeed, camFeed.x, camFeed.y, camFeed.scaledWidth, camFeed.scaledHeight);
-            sk.pop();
-            // GET LANDMARKS - Include wrist (0) + fingertips for proper detection
-            const landmarksIndex = [
-                0,
-                4,
-                8,
-                12,
-                16,
-                20
-            ]; // Wrist, Thumb, Index, Middle, Ring, Pinky
-            const LM = (0, _landmarksHandler.getMappedLandmarks)(sk, (0, _handsModelMediaPipe.mediaPipe), camFeed, landmarksIndex);
-            // Safety check - if no landmarks, skip frame
-            if (!LM || Object.keys(LM).length === 0) return;
-            // Get finger positions (excluding wrist for finger count)
-            let fingers = [
-                {
-                    x: LM.X4,
-                    y: LM.Y4
-                },
-                {
-                    x: LM.X8,
-                    y: LM.Y8
-                },
-                {
-                    x: LM.X12,
-                    y: LM.Y12
-                },
-                {
-                    x: LM.X16,
-                    y: LM.Y16
-                },
-                {
-                    x: LM.X20,
-                    y: LM.Y20
-                }
-            ];
-            // Use wrist as fallback for hand center if needed
-            let wrist = {
-                x: LM.X0,
-                y: LM.Y0
+            const hand = (0, _gestureRecognizer.gesturePipe).results.landmarks?.[0];
+            if (!hand) return;
+            const cx = sk.map(hand[0].x, 1, 0, 0, camFeed.scaledWidth);
+            const cy = sk.map(hand[0].y, 0, 1, 0, camFeed.scaledHeight);
+            lastValidHandPos = {
+                x: cx,
+                y: cy
             };
-            // Calculate hand center from valid fingers, use wrist as fallback
-            let validFingers = fingers.filter((f)=>isFinite(f.x) && isFinite(f.y));
-            let centerX, centerY;
-            if (validFingers.length > 0) {
-                centerX = validFingers.reduce((sum, f)=>sum + f.x, 0) / validFingers.length;
-                centerY = validFingers.reduce((sum, f)=>sum + f.y, 0) / validFingers.length;
-            } else if (isFinite(wrist.x) && isFinite(wrist.y)) {
-                // Use wrist as fallback if no fingers detected
-                centerX = wrist.x;
-                centerY = wrist.y;
-            }
-            // Update last valid position
-            if (isFinite(centerX) && isFinite(centerY)) lastValidHandPos = {
-                x: centerX,
-                y: centerY
-            };
-            // SIMPLE FIST DETECTION - Based on number of detected fingers
-            let detectedFingers = validFingers.length;
-            // More lenient hand state detection
-            let isHandOpen = detectedFingers >= 3; // Open hand: 3+ fingers detected
-            let isHandClosed = detectedFingers <= 1; // Closed fist: 1 or fewer fingers detected
-            // Simple state tracking
-            let wasHandOpen = true; // Always assume previous state was open for simplicity
-            // Update state on the hand position object
-            if (lastValidHandPos) {
-                lastValidHandPos.wasOpen = isHandOpen;
-                wasHandOpen = lastValidHandPos.wasOpen;
-            }
-            // SELECTION LOGIC - Simplified fist gesture
-            if (isHandClosed && !isSelecting) {
-                // Hand closed: Start selection
+            const gestures = (0, _gestureRecognizer.gesturePipe).results.gestures?.[0];
+            const label = gestures?.[0]?.categoryName || "None";
+            const isFist = label === "Closed_Fist";
+            const isOpen = label === "Open_Palm";
+            if (isFist && !isSelecting) {
                 isSelecting = true;
                 selectionStart = {
                     ...lastValidHandPos
                 };
-            } else if (isSelecting && isHandOpen) {
-                // Hand opened: Take snapshot
+            } else if (isSelecting && isOpen) {
                 isSelecting = false;
                 let { x, y, w, h } = getSelectionBounds(selectionStart.x, selectionStart.y, lastValidHandPos.x, lastValidHandPos.y);
                 captureSelection(x, y, w, h);
-                // Reset selection state
                 selectionStart = null;
                 selectionEnd = null;
-            } else if (isSelecting) // Update selection end position
-            selectionEnd = {
+            } else if (isSelecting) selectionEnd = {
                 ...lastValidHandPos
             };
-            // CLEAR LOGIC
-            let distForClear = lastValidHandPos ? Math.floor(sk.dist(lastValidHandPos.x, lastValidHandPos.y, 80, sk.height - 80)) : Infinity;
-            if (isHandOpen && distForClear < 100) {
-                if (!clearStartTime) clearStartTime = sk.millis();
-                else if (sk.millis() - clearStartTime > clearHoldDuration) {
-                    snapshots = []; // Clear all snapshots
-                    clearStartTime = null; // Reset the timer
-                }
-            } else clearStartTime = null; // Reset the timer if hand moves away or closes
-            // SNAPSHOT LOGIC
-            let currentTime = sk.millis();
-            for(let i = snapshots.length - 1; i >= 0; i--){
-                let { img, x, y, w, h, startTime } = snapshots[i];
-                let opacity = 255;
-                if (hasFade) {
-                    let elapsed = currentTime - startTime;
-                    opacity = sk.map(elapsed, 0, fadeDuration, 255, 0);
-                }
-                if (opacity <= 0) snapshots.splice(i, 1);
-                else {
-                    sk.push();
-                    sk.tint(255, 250, 250, opacity);
-                    sk.image(img, x, y, w, h);
-                    sk.pop();
-                }
-            }
-            // DRAW SELECTION RECTANGLE
             if (isSelecting && selectionStart && selectionEnd) {
                 sk.push();
                 sk.noFill();
@@ -741,61 +645,39 @@ new (0, _p5Default.default)((sk)=>{
                     5,
                     5
                 ]);
-                let { x, y, w, h } = getSelectionBounds(selectionStart.x, selectionStart.y, selectionEnd.x, selectionEnd.y);
+                const { x, y, w, h } = getSelectionBounds(selectionStart.x, selectionStart.y, selectionEnd.x, selectionEnd.y);
                 sk.rect(x, y, w, h);
                 sk.pop();
             }
-            // FLASH EFFECT
+            let currentTime = sk.millis();
+            for(let i = snapshots.length - 1; i >= 0; i--){
+                let { img, x, y, w, h, startTime } = snapshots[i];
+                let opacity = hasFade ? sk.map(currentTime - startTime, 0, fadeDuration, 255, 0) : 255;
+                if (opacity <= 0) snapshots.splice(i, 1);
+                else {
+                    sk.push();
+                    sk.tint(255, opacity);
+                    sk.image(img, x, y, w, h);
+                    sk.pop();
+                }
+            }
             if (flash) {
-                let currentTime = sk.millis();
-                let elapsed = currentTime - flash.flashStartTime;
+                let elapsed = sk.millis() - flash.flashStartTime;
                 if (elapsed < flash.flashDuration) {
                     let opacity = sk.map(elapsed, 0, flash.flashDuration, flash.flashOpacity, 0);
-                    sk.push();
-                    sk.fill(255, 255, 255, opacity);
+                    sk.fill(255, opacity);
                     sk.noStroke();
                     sk.rect(flash.x, flash.y, flash.w, flash.h);
-                    sk.pop();
                 } else flash = null;
             }
-            // Draw hand position
             if (lastValidHandPos) {
-                sk.push();
-                sk.fill(255, 255, 255, 255);
+                sk.fill(255);
                 sk.noStroke();
                 sk.ellipse(lastValidHandPos.x, lastValidHandPos.y, 28);
-                sk.fill(0);
-                sk.text(isSelecting ? "Selecting" : isHandClosed ? "Fist" : "Open", lastValidHandPos.x, lastValidHandPos.y);
-                // Simple debug info
-                sk.textSize(12);
-                sk.text(`Fingers: ${detectedFingers}/5`, lastValidHandPos.x, lastValidHandPos.y + 15);
-                sk.text(`States: O:${isHandOpen} C:${isHandClosed} Was:${wasHandOpen}`, lastValidHandPos.x, lastValidHandPos.y + 30);
-                sk.textSize(20);
-                sk.pop();
+                sk.text(label, lastValidHandPos.x, lastValidHandPos.y);
             }
-            // CLEAR AREA ELEMENT
-            sk.push();
-            sk.fill(255, 255, 255, 40);
-            sk.stroke(255);
-            sk.strokeWeight(2);
-            sk.ellipse(80, sk.height - 80, 120);
-            sk.pop();
-            sk.push();
-            sk.fill(255);
-            sk.noStroke();
-            sk.text("CLEAR", 80, sk.height - 80);
-            sk.pop();
-            // Show clear progress
-            if (clearStartTime) {
-                let progress = (sk.millis() - clearStartTime) / clearHoldDuration;
-                sk.push();
-                sk.noFill();
-                sk.stroke(255, 0, 0);
-                sk.arc(80, sk.height - 80, 140, 140, -sk.HALF_PI, -sk.HALF_PI + progress * sk.TWO_PI);
-                sk.pop();
-            }
-        } catch (error) {
-            console.error("Error in draw loop:", error);
+        } catch (err) {
+            console.error("Draw loop error:", err);
         }
     };
     const getSelectionBounds = (startX, startY, endX, endY)=>{
@@ -816,9 +698,7 @@ new (0, _p5Default.default)((sk)=>{
         let videoW = camFeed.width / camFeed.scaledWidth * w;
         let videoH = camFeed.height / camFeed.scaledHeight * h;
         let selectedImage = sk.createGraphics(w, h);
-        selectedImage.push();
         selectedImage.copy(camFeed, videoX, videoY, videoW, videoH, 0, 0, w, h);
-        selectedImage.pop();
         snapshots.push({
             img: selectedImage,
             x,
@@ -829,20 +709,15 @@ new (0, _p5Default.default)((sk)=>{
         });
         flash = flashFeedback(x, y, w, h);
     };
-    const flashFeedback = (x, y, w, h)=>{
-        let flashDuration = 500;
-        let flashOpacity = 124;
-        let flashStartTime = sk.millis();
-        return {
+    const flashFeedback = (x, y, w, h)=>({
             x,
             y,
             w,
             h,
-            flashDuration,
-            flashStartTime,
-            flashOpacity
-        };
-    };
+            flashDuration: 500,
+            flashStartTime: sk.millis(),
+            flashOpacity: 124
+        });
     sk.windowResized = ()=>{
         sk.resizeCanvas(window.innerWidth, window.innerHeight);
         (0, _videoFeedUtils.updateFeedDimensions)(sk, camFeed);
@@ -852,7 +727,7 @@ function strokeDash(sk, list) {
     sk.drawingContext.setLineDash(list);
 }
 
-},{"p5":"7Uk5U","./handsModelMediaPipe":"2jplw","./landmarksHandler":"44KuU","@parcel/transformer-js/src/esmodule-helpers.js":"gkKU3","./videoFeedUtils":"dkZ6p"}],"7Uk5U":[function(require,module,exports) {
+},{"p5":"7Uk5U","@parcel/transformer-js/src/esmodule-helpers.js":"gkKU3","./videoFeedUtils":"dkZ6p","./gestureRecognizer":"49e7J"}],"7Uk5U":[function(require,module,exports) {
 /*! p5.js v1.9.4 May 21, 2024 */ var global = arguments[3];
 !function(e1) {
     module.exports = e1();
@@ -32873,54 +32748,125 @@ function strokeDash(sk, list) {
     ])(264);
 });
 
-},{}],"2jplw":[function(require,module,exports) {
+},{}],"gkKU3":[function(require,module,exports) {
+exports.interopDefault = function(a) {
+    return a && a.__esModule ? a : {
+        default: a
+    };
+};
+exports.defineInteropFlag = function(a) {
+    Object.defineProperty(a, "__esModule", {
+        value: true
+    });
+};
+exports.exportAll = function(source, dest) {
+    Object.keys(source).forEach(function(key) {
+        if (key === "default" || key === "__esModule" || Object.prototype.hasOwnProperty.call(dest, key)) return;
+        Object.defineProperty(dest, key, {
+            enumerable: true,
+            get: function() {
+                return source[key];
+            }
+        });
+    });
+    return dest;
+};
+exports.export = function(dest, destName, get) {
+    Object.defineProperty(dest, destName, {
+        enumerable: true,
+        get: get
+    });
+};
+
+},{}],"dkZ6p":[function(require,module,exports) {
+// Version 2.1 - 03.07.2025 - Gesture Recognizer
 var parcelHelpers = require("@parcel/transformer-js/src/esmodule-helpers.js");
 parcelHelpers.defineInteropFlag(exports);
-parcelHelpers.export(exports, "mediaPipe", ()=>mediaPipe);
-var _tasksVision = require("@mediapipe/tasks-vision");
-const MODEL_URL = "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/latest/hand_landmarker.task";
-const MODEL_URL_WASM = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm";
-const NUM_HANDS = 2;
-const RUNNING_MODE = "VIDEO";
-let handLandmarker;
-let lastVideoTime = -1;
-const mediaPipe = {
-    handednesses: [],
-    landmarks: [],
-    worldLandmarks: [],
-    initialize: async ()=>{
-        try {
-            const vision = await (0, _tasksVision.FilesetResolver).forVisionTasks(MODEL_URL_WASM);
-            handLandmarker = await (0, _tasksVision.HandLandmarker).createFromOptions(vision, {
-                baseOptions: {
-                    modelAssetPath: MODEL_URL,
-                    delegate: "GPU"
-                },
-                runningMode: RUNNING_MODE,
-                numHands: NUM_HANDS
-            });
-        } catch (error) {
-            console.error("Failed to initialize HandLandmarker:", error);
-        }
-    },
-    predictWebcam: async (video)=>{
-        try {
-            if (lastVideoTime !== video.elt.currentTime && handLandmarker) {
-                lastVideoTime = video.elt.currentTime;
-                const results = await handLandmarker.detectForVideo(video.elt, performance.now());
-                if (results) {
-                    mediaPipe.handednesses = results.handednesses || [];
-                    mediaPipe.landmarks = results.landmarks || [];
-                    mediaPipe.worldLandmarks = results.worldLandmarks || [];
-                }
+parcelHelpers.export(exports, "initializeCamCapture", ()=>initializeCamCapture);
+parcelHelpers.export(exports, "updateFeedDimensions", ()=>updateFeedDimensions);
+function initializeCamCapture(sk, gesturePipe) {
+    const camFeed = sk.createCapture({
+        flipped: true,
+        audio: false,
+        video: {
+            width: {
+                ideal: 1920,
+                min: 1280
+            },
+            height: {
+                ideal: 1080,
+                min: 720
+            },
+            frameRate: {
+                ideal: 30,
+                min: 24
             }
-            window.requestAnimationFrame(()=>mediaPipe.predictWebcam(video));
-        } catch (error) {
-            console.error("Failed to predict webcam:", error);
         }
+    }, (stream)=>{
+        console.log("Camera initialized:", stream.getTracks()[0].getSettings());
+        updateFeedDimensions(sk, camFeed, false);
+        gesturePipe.predict(camFeed);
+    });
+    camFeed.elt.setAttribute("playsinline", "");
+    camFeed.hide();
+    return camFeed;
+}
+function updateFeedDimensions(sk, feed, fitToHeight = false) {
+    if (!feed) return;
+    const canvasRatio = sk.width / sk.height;
+    const videoRatio = feed.width / feed.height;
+    let x = 0, y = 0, w = sk.width, h = sk.height;
+    if (canvasRatio > videoRatio) {
+        if (fitToHeight) {
+            w = sk.height * videoRatio;
+            x = (sk.width - w) / 2;
+        } else {
+            h = sk.width / videoRatio;
+            y = (sk.height - h) / 2;
+        }
+    } else {
+        w = sk.height * videoRatio;
+        x = (sk.width - w) / 2;
+    }
+    feed.scaledWidth = w;
+    feed.scaledHeight = h;
+    feed.x = x;
+    feed.y = y;
+}
+
+},{"@parcel/transformer-js/src/esmodule-helpers.js":"gkKU3"}],"49e7J":[function(require,module,exports) {
+// gestureRecognizer.js
+var parcelHelpers = require("@parcel/transformer-js/src/esmodule-helpers.js");
+parcelHelpers.defineInteropFlag(exports);
+parcelHelpers.export(exports, "gesturePipe", ()=>gesturePipe);
+var _tasksVision = require("@mediapipe/tasks-vision");
+const MODEL_PATH = "https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/latest/gesture_recognizer.task";
+const WASM_PATH = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm";
+let gestureRecognizer;
+let lastVideoTime = -1;
+const gesturePipe = {
+    results: {},
+    initialize: async ()=>{
+        const vision = await (0, _tasksVision.FilesetResolver).forVisionTasks(WASM_PATH);
+        gestureRecognizer = await (0, _tasksVision.GestureRecognizer).createFromOptions(vision, {
+            baseOptions: {
+                modelAssetPath: MODEL_PATH,
+                delegate: "GPU"
+            },
+            runningMode: "VIDEO",
+            numHands: 2
+        });
+    },
+    predict: async (video)=>{
+        if (lastVideoTime !== video.elt.currentTime && gestureRecognizer) {
+            lastVideoTime = video.elt.currentTime;
+            const results = await gestureRecognizer.recognizeForVideo(video.elt, performance.now());
+            gesturePipe.results = results;
+        }
+        window.requestAnimationFrame(()=>gesturePipe.predict(video));
     }
 };
-mediaPipe.initialize();
+gesturePipe.initialize();
 
 },{"@mediapipe/tasks-vision":"e5Mjq","@parcel/transformer-js/src/esmodule-helpers.js":"gkKU3"}],"e5Mjq":[function(require,module,exports) {
 var parcelHelpers = require("@parcel/transformer-js/src/esmodule-helpers.js");
@@ -46205,115 +46151,6 @@ hc.prototype.detectForVideo = hc.prototype.G, hc.prototype.detect = hc.prototype
 }, hc.createFromOptions = function(t, e) {
     return Qa(hc, t, e);
 }, hc.POSE_CONNECTIONS = xh;
-
-},{"@parcel/transformer-js/src/esmodule-helpers.js":"gkKU3"}],"gkKU3":[function(require,module,exports) {
-exports.interopDefault = function(a) {
-    return a && a.__esModule ? a : {
-        default: a
-    };
-};
-exports.defineInteropFlag = function(a) {
-    Object.defineProperty(a, "__esModule", {
-        value: true
-    });
-};
-exports.exportAll = function(source, dest) {
-    Object.keys(source).forEach(function(key) {
-        if (key === "default" || key === "__esModule" || Object.prototype.hasOwnProperty.call(dest, key)) return;
-        Object.defineProperty(dest, key, {
-            enumerable: true,
-            get: function() {
-                return source[key];
-            }
-        });
-    });
-    return dest;
-};
-exports.export = function(dest, destName, get) {
-    Object.defineProperty(dest, destName, {
-        enumerable: true,
-        get: get
-    });
-};
-
-},{}],"44KuU":[function(require,module,exports) {
-var parcelHelpers = require("@parcel/transformer-js/src/esmodule-helpers.js");
-parcelHelpers.defineInteropFlag(exports);
-parcelHelpers.export(exports, "getMappedLandmarks", ()=>getMappedLandmarks);
-const getMappedLandmarks = (sk, mediaPipe, camFeed, indices)=>{
-    const mappedLandmarks = {};
-    if (mediaPipe.landmarks.length > 0 && mediaPipe.landmarks[0]) indices.forEach((index)=>{
-        if (mediaPipe.landmarks[0][index]) {
-            const LMX = `X${index}`;
-            const LMY = `Y${index}`;
-            mappedLandmarks[LMX] = sk.map(mediaPipe.landmarks[0][index].x, 1, 0, 0, camFeed.scaledWidth);
-            mappedLandmarks[LMY] = sk.map(mediaPipe.landmarks[0][index].y, 0, 1, 0, camFeed.scaledHeight);
-        }
-    });
-    return mappedLandmarks;
-};
-
-},{"@parcel/transformer-js/src/esmodule-helpers.js":"gkKU3"}],"dkZ6p":[function(require,module,exports) {
-// Version 2.0 - 23.06.2025
-var parcelHelpers = require("@parcel/transformer-js/src/esmodule-helpers.js");
-parcelHelpers.defineInteropFlag(exports);
-parcelHelpers.export(exports, "initializeCamCapture", ()=>initializeCamCapture);
-parcelHelpers.export(exports, "updateFeedDimensions", ()=>updateFeedDimensions);
-function initializeCamCapture(sk, mediaPipeHandler) {
-    const camFeed = sk.createCapture({
-        flipped: true,
-        audio: false,
-        video: {
-            width: {
-                ideal: 1920,
-                min: 1280
-            },
-            height: {
-                ideal: 1080,
-                min: 720
-            },
-            frameRate: {
-                ideal: 30,
-                min: 24
-            }
-        }
-    }, (stream)=>{
-        console.log(stream.getTracks()[0].getSettings());
-        updateFeedDimensions(sk, camFeed, false);
-        mediaPipeHandler.predictWebcam(camFeed);
-    });
-    camFeed.elt.setAttribute("playsinline", "");
-    camFeed.hide();
-    return camFeed;
-}
-function updateFeedDimensions(sk, feed, fitToHeight = false) {
-    if (!feed) return;
-    const canvasRatio = sk.width / sk.height;
-    const videoRatio = feed.width / feed.height;
-    let x = 0;
-    let y = 0;
-    let w = sk.width;
-    let h = sk.height;
-    if (canvasRatio > videoRatio) {
-        if (fitToHeight) {
-            // Fit to canvas height, center horizontally, Portrait mode
-            w = sk.height * videoRatio;
-            x = (sk.width - w) / 2;
-        } else {
-            // Fit to canvas width, center vertically, Landscape mode
-            h = sk.width / videoRatio;
-            y = (sk.height - h) / 2;
-        }
-    } else {
-        // Video is wider - fit to height, center horizontally
-        w = sk.height * videoRatio;
-        x = (sk.width - w) / 2;
-    }
-    feed.scaledWidth = w;
-    feed.scaledHeight = h;
-    feed.x = x;
-    feed.y = y;
-}
 
 },{"@parcel/transformer-js/src/esmodule-helpers.js":"gkKU3"}]},["h9Rts","fFaKF"], "fFaKF", "parcelRequire94c2")
 
