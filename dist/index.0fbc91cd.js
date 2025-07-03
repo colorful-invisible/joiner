@@ -852,7 +852,7 @@ function strokeDash(sk, list) {
     sk.drawingContext.setLineDash(list);
 }
 
-},{"p5":"7Uk5U","./handsModelMediaPipe":"2jplw","./videoFeedUtils":"dkZ6p","./landmarksHandler":"44KuU","@parcel/transformer-js/src/esmodule-helpers.js":"gkKU3"}],"7Uk5U":[function(require,module,exports) {
+},{"p5":"7Uk5U","./handsModelMediaPipe":"2jplw","./landmarksHandler":"44KuU","@parcel/transformer-js/src/esmodule-helpers.js":"gkKU3","./videoFeedUtils":"dkZ6p"}],"7Uk5U":[function(require,module,exports) {
 /*! p5.js v1.9.4 May 21, 2024 */ var global = arguments[3];
 !function(e1) {
     module.exports = e1();
@@ -46236,7 +46236,24 @@ exports.export = function(dest, destName, get) {
     });
 };
 
-},{}],"dkZ6p":[function(require,module,exports) {
+},{}],"44KuU":[function(require,module,exports) {
+var parcelHelpers = require("@parcel/transformer-js/src/esmodule-helpers.js");
+parcelHelpers.defineInteropFlag(exports);
+parcelHelpers.export(exports, "getMappedLandmarks", ()=>getMappedLandmarks);
+const getMappedLandmarks = (sk, mediaPipe, camFeed, indices)=>{
+    const mappedLandmarks = {};
+    if (mediaPipe.landmarks.length > 0 && mediaPipe.landmarks[0]) indices.forEach((index)=>{
+        if (mediaPipe.landmarks[0][index]) {
+            const LMX = `X${index}`;
+            const LMY = `Y${index}`;
+            mappedLandmarks[LMX] = sk.map(mediaPipe.landmarks[0][index].x, 1, 0, 0, camFeed.scaledWidth);
+            mappedLandmarks[LMY] = sk.map(mediaPipe.landmarks[0][index].y, 0, 1, 0, camFeed.scaledHeight);
+        }
+    });
+    return mappedLandmarks;
+};
+
+},{"@parcel/transformer-js/src/esmodule-helpers.js":"gkKU3"}],"dkZ6p":[function(require,module,exports) {
 // Version 2.0 - 23.06.2025
 var parcelHelpers = require("@parcel/transformer-js/src/esmodule-helpers.js");
 parcelHelpers.defineInteropFlag(exports);
@@ -46297,23 +46314,6 @@ function updateFeedDimensions(sk, feed, fitToHeight = false) {
     feed.x = x;
     feed.y = y;
 }
-
-},{"@parcel/transformer-js/src/esmodule-helpers.js":"gkKU3"}],"44KuU":[function(require,module,exports) {
-var parcelHelpers = require("@parcel/transformer-js/src/esmodule-helpers.js");
-parcelHelpers.defineInteropFlag(exports);
-parcelHelpers.export(exports, "getMappedLandmarks", ()=>getMappedLandmarks);
-const getMappedLandmarks = (sk, mediaPipe, camFeed, indices)=>{
-    const mappedLandmarks = {};
-    if (mediaPipe.landmarks.length > 0 && mediaPipe.landmarks[0]) indices.forEach((index)=>{
-        if (mediaPipe.landmarks[0][index]) {
-            const LMX = `X${index}`;
-            const LMY = `Y${index}`;
-            mappedLandmarks[LMX] = sk.map(mediaPipe.landmarks[0][index].x, 1, 0, 0, camFeed.scaledWidth);
-            mappedLandmarks[LMY] = sk.map(mediaPipe.landmarks[0][index].y, 0, 1, 0, camFeed.scaledHeight);
-        }
-    });
-    return mappedLandmarks;
-};
 
 },{"@parcel/transformer-js/src/esmodule-helpers.js":"gkKU3"}]},["h9Rts","fFaKF"], "fFaKF", "parcelRequire94c2")
 
