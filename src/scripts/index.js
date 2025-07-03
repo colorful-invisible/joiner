@@ -44,11 +44,12 @@ new p5((sk) => {
       sk.image(camFeed, drawX, drawY, drawWidth, drawHeight);
 
       const hand = gesturePipe.results.landmarks?.[0];
-      if (!hand) return;
-
-      const cx = sk.map(hand[0].x, 1, 0, 0, camFeed.scaledWidth);
-      const cy = sk.map(hand[0].y, 0, 1, 0, camFeed.scaledHeight);
-      lastValidHandPos = { x: cx, y: cy };
+      // Use lastValidHandPos if hand is not detected, so snapshots remain visible
+      if (hand) {
+        const cx = sk.map(hand[9].x, 1, 0, 0, camFeed.scaledWidth);
+        const cy = sk.map(hand[9].y, 0, 1, 0, camFeed.scaledHeight);
+        lastValidHandPos = { x: cx, y: cy };
+      }
 
       const gestures = gesturePipe.results.gestures?.[0];
       const label = gestures?.[0]?.categoryName || "None";
@@ -59,21 +60,52 @@ new p5((sk) => {
       if (isFist && !isSelecting) {
         isSelecting = true;
         selectionStart = { ...lastValidHandPos };
+        selectionEnd = { ...lastValidHandPos };
       } else if (isSelecting && isOpen) {
-        isSelecting = false;
-        let { x, y, w, h } = getSelectionBounds(
-          selectionStart.x,
-          selectionStart.y,
-          lastValidHandPos.x,
-          lastValidHandPos.y
-        );
-        captureSelection(x, y, w, h);
-        selectionStart = null;
-        selectionEnd = null;
+        // Freeze selectionEnd at the moment palm is opened
+        if (!sk._snapshotTimeout) {
+          const frozenSelectionEnd = { ...selectionEnd };
+          sk._snapshotTimeout = setTimeout(() => {
+            isSelecting = false;
+            let { x, y, w, h } = getSelectionBounds(
+              selectionStart.x,
+              selectionStart.y,
+              frozenSelectionEnd.x,
+              frozenSelectionEnd.y
+            );
+            captureSelection(x, y, w, h);
+            selectionStart = null;
+            selectionEnd = null;
+            sk._snapshotTimeout = null;
+          }, 500); // 500ms delay
+        }
       } else if (isSelecting) {
         selectionEnd = { ...lastValidHandPos };
+      } else {
+        // If not selecting and timeout exists, clear it
+        if (sk._snapshotTimeout) {
+          clearTimeout(sk._snapshotTimeout);
+          sk._snapshotTimeout = null;
+        }
       }
 
+      // Draw snapshots first
+      let currentTime = sk.millis();
+      for (let i = snapshots.length - 1; i >= 0; i--) {
+        let { img, x, y, w, h, startTime } = snapshots[i];
+        let opacity = hasFade
+          ? sk.map(currentTime - startTime, 0, fadeDuration, 255, 0)
+          : 255;
+        if (opacity <= 0) snapshots.splice(i, 1);
+        else {
+          sk.push();
+          sk.tint(255, opacity);
+          sk.image(img, x, y, w, h);
+          sk.pop();
+        }
+      }
+
+      // Draw selection rectangle above snapshots
       if (isSelecting && selectionStart && selectionEnd) {
         sk.push();
         sk.noFill();
@@ -88,21 +120,6 @@ new p5((sk) => {
         );
         sk.rect(x, y, w, h);
         sk.pop();
-      }
-
-      let currentTime = sk.millis();
-      for (let i = snapshots.length - 1; i >= 0; i--) {
-        let { img, x, y, w, h, startTime } = snapshots[i];
-        let opacity = hasFade
-          ? sk.map(currentTime - startTime, 0, fadeDuration, 255, 0)
-          : 255;
-        if (opacity <= 0) snapshots.splice(i, 1);
-        else {
-          sk.push();
-          sk.tint(255, opacity);
-          sk.image(img, x, y, w, h);
-          sk.pop();
-        }
       }
 
       if (flash) {

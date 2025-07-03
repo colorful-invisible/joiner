@@ -706,13 +706,15 @@ new (0, _p5Default.default)((sk)=>{
             const drawHeight = camFeed.scaledHeight || camFeed.height || sk.height;
             sk.image(camFeed, drawX, drawY, drawWidth, drawHeight);
             const hand = (0, _gestureRecognizer.gesturePipe).results.landmarks?.[0];
-            if (!hand) return;
-            const cx = sk.map(hand[0].x, 1, 0, 0, camFeed.scaledWidth);
-            const cy = sk.map(hand[0].y, 0, 1, 0, camFeed.scaledHeight);
-            lastValidHandPos = {
-                x: cx,
-                y: cy
-            };
+            // Use lastValidHandPos if hand is not detected, so snapshots remain visible
+            if (hand) {
+                const cx = sk.map(hand[9].x, 1, 0, 0, camFeed.scaledWidth);
+                const cy = sk.map(hand[9].y, 0, 1, 0, camFeed.scaledHeight);
+                lastValidHandPos = {
+                    x: cx,
+                    y: cy
+                };
+            }
             const gestures = (0, _gestureRecognizer.gesturePipe).results.gestures?.[0];
             const label = gestures?.[0]?.categoryName || "None";
             const isFist = label === "Closed_Fist";
@@ -722,15 +724,46 @@ new (0, _p5Default.default)((sk)=>{
                 selectionStart = {
                     ...lastValidHandPos
                 };
-            } else if (isSelecting && isOpen) {
-                isSelecting = false;
-                let { x, y, w, h } = getSelectionBounds(selectionStart.x, selectionStart.y, lastValidHandPos.x, lastValidHandPos.y);
-                captureSelection(x, y, w, h);
-                selectionStart = null;
-                selectionEnd = null;
+                selectionEnd = {
+                    ...lastValidHandPos
+                };
+            } else if (isSelecting && isOpen) // Freeze selectionEnd at the moment palm is opened
+            {
+                if (!sk._snapshotTimeout) {
+                    const frozenSelectionEnd = {
+                        ...selectionEnd
+                    };
+                    sk._snapshotTimeout = setTimeout(()=>{
+                        isSelecting = false;
+                        let { x, y, w, h } = getSelectionBounds(selectionStart.x, selectionStart.y, frozenSelectionEnd.x, frozenSelectionEnd.y);
+                        captureSelection(x, y, w, h);
+                        selectionStart = null;
+                        selectionEnd = null;
+                        sk._snapshotTimeout = null;
+                    }, 500); // 500ms delay
+                }
             } else if (isSelecting) selectionEnd = {
                 ...lastValidHandPos
             };
+            else // If not selecting and timeout exists, clear it
+            if (sk._snapshotTimeout) {
+                clearTimeout(sk._snapshotTimeout);
+                sk._snapshotTimeout = null;
+            }
+            // Draw snapshots first
+            let currentTime = sk.millis();
+            for(let i = snapshots.length - 1; i >= 0; i--){
+                let { img, x, y, w, h, startTime } = snapshots[i];
+                let opacity = hasFade ? sk.map(currentTime - startTime, 0, fadeDuration, 255, 0) : 255;
+                if (opacity <= 0) snapshots.splice(i, 1);
+                else {
+                    sk.push();
+                    sk.tint(255, opacity);
+                    sk.image(img, x, y, w, h);
+                    sk.pop();
+                }
+            }
+            // Draw selection rectangle above snapshots
             if (isSelecting && selectionStart && selectionEnd) {
                 sk.push();
                 sk.noFill();
@@ -743,18 +776,6 @@ new (0, _p5Default.default)((sk)=>{
                 const { x, y, w, h } = getSelectionBounds(selectionStart.x, selectionStart.y, selectionEnd.x, selectionEnd.y);
                 sk.rect(x, y, w, h);
                 sk.pop();
-            }
-            let currentTime = sk.millis();
-            for(let i = snapshots.length - 1; i >= 0; i--){
-                let { img, x, y, w, h, startTime } = snapshots[i];
-                let opacity = hasFade ? sk.map(currentTime - startTime, 0, fadeDuration, 255, 0) : 255;
-                if (opacity <= 0) snapshots.splice(i, 1);
-                else {
-                    sk.push();
-                    sk.tint(255, opacity);
-                    sk.image(img, x, y, w, h);
-                    sk.pop();
-                }
             }
             if (flash) {
                 let elapsed = sk.millis() - flash.flashStartTime;
@@ -46710,7 +46731,6 @@ parcelHelpers.defineInteropFlag(exports);
 parcelHelpers.export(exports, "initializeCamCapture", ()=>initializeCamCapture);
 parcelHelpers.export(exports, "updateFeedDimensions", ()=>updateFeedDimensions);
 function initializeCamCapture(sk, gesturePipe) {
-    console.log("Initializing camera capture...");
     const camFeed = sk.createCapture({
         flipped: true,
         audio: false,
@@ -46729,48 +46749,23 @@ function initializeCamCapture(sk, gesturePipe) {
             }
         }
     }, (stream)=>{
-        console.log("Camera initialized:", stream.getTracks()[0].getSettings());
-        // Wait for video to be ready before setting dimensions
-        const waitForVideo = ()=>{
-            if (camFeed.width > 0 && camFeed.height > 0) {
-                console.log("Video dimensions available:", camFeed.width, "x", camFeed.height);
-                updateFeedDimensions(sk, camFeed, false);
-            } else {
-                console.log("Waiting for video dimensions...");
-                setTimeout(waitForVideo, 100);
-            }
-        };
-        waitForVideo();
-        // Wait for gesture recognizer to be ready before starting prediction
-        const startPrediction = ()=>{
-            if (gesturePipe.isInitialized) {
-                console.log("Starting gesture prediction...");
-                gesturePipe.predict(camFeed);
-            } else {
-                console.log("Waiting for gesture recognizer...");
-                setTimeout(startPrediction, 100);
-            }
-        };
-        startPrediction();
+        // Just update dimensions once, no waiting loop
+        updateFeedDimensions(sk, camFeed, false);
+        // Start gesture prediction immediately
+        gesturePipe.predict(camFeed);
     });
     camFeed.elt.setAttribute("playsinline", "");
-    camFeed.hide(); // Hide the HTML video element, we'll draw it manually
+    camFeed.hide();
     return camFeed;
 }
 function updateFeedDimensions(sk, feed, fitToHeight = false) {
-    if (!feed) {
-        console.log("No feed provided to updateFeedDimensions");
-        return;
-    }
-    console.log("Updating feed dimensions:", {
-        feedWidth: feed.width,
-        feedHeight: feed.height,
-        canvasWidth: sk.width,
-        canvasHeight: sk.height
-    });
+    if (!feed) return;
     const canvasRatio = sk.width / sk.height;
     const videoRatio = feed.width / feed.height;
-    let x = 0, y = 0, w = sk.width, h = sk.height;
+    let x = 0;
+    let y = 0;
+    let w = sk.width;
+    let h = sk.height;
     if (canvasRatio > videoRatio) {
         if (fitToHeight) {
             w = sk.height * videoRatio;
@@ -46787,12 +46782,6 @@ function updateFeedDimensions(sk, feed, fitToHeight = false) {
     feed.scaledHeight = h;
     feed.x = x;
     feed.y = y;
-    console.log("Feed dimensions set to:", {
-        x: feed.x,
-        y: feed.y,
-        scaledWidth: feed.scaledWidth,
-        scaledHeight: feed.scaledHeight
-    });
 }
 
 },{"@parcel/transformer-js/src/esmodule-helpers.js":"jnFvT"}]},["2aZ6o","8JWvp"], "8JWvp", "parcelRequire94c2", {})
