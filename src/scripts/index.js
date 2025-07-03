@@ -1,292 +1,285 @@
 import p5 from "p5";
-import { gesturePipe } from "./gestureRecognizer";
+import { mediaPipe } from "./handsModel";
 import { initializeCamCapture, updateFeedDimensions } from "./videoFeedUtils";
+import { getMappedLandmarks } from "./landmarksHandler";
 
 new p5((sk) => {
-  // ---- CONFIGURATION
-  const developmentDuration = 2000; // Flash development time
-  const hasFade = false;
-  const fadeDuration = 30000;
-
-  // ---- STATE VARIABLES
-
-  // Core app state
+  // State
   let camFeed;
   let snapshots = [];
   let lastValidHandPos = null;
-
-  // Selection state
   let isSelecting = false;
   let selectionStart = null;
   let selectionEnd = null;
-
-  // Development state
   let isDeveloping = false;
   let developmentStartTime = null;
-  let pendingCapture = null; // Store capture info while developing
-
-  // Visual effects
+  let pendingCapture = null;
   let flash = null;
+  let lastGesture = null;
+  let gestureStableFrames = 0;
 
-  // ---- SETUP
+  // Config
+  const developmentDuration = 2000;
+  const requiredStableFrames = 10; // Increased from 5 to 10 for more stability
+
   sk.setup = () => {
     sk.createCanvas(sk.windowWidth, sk.windowHeight);
     sk.background(0);
     sk.textSize(20);
     sk.textAlign(sk.CENTER, sk.CENTER);
-    camFeed = initializeCamCapture(sk, gesturePipe);
+    camFeed = initializeCamCapture(sk, mediaPipe);
   };
 
-  // ---- MAIN DRAW LOOP
   sk.draw = () => {
-    try {
-      sk.background(0);
+    sk.background(0);
 
-      // 1. Check camera readiness
-      if (!isCameraReady()) {
-        drawLoadingMessage();
-        return;
-      }
-
-      // 2. Draw camera feed
-      drawCameraFeed();
-
-      // 3. Process hand tracking
-      updateHandTracking();
-
-      // 4. Handle gesture recognition
-      handleGestures();
-
-      // 5. Draw UI elements
-      drawSnapshots();
-      drawSelectionRectangle();
-      drawFlashEffect();
-      drawHandMarker();
-
-      // 6. Check if development is complete
-      checkDevelopmentComplete();
-    } catch (err) {
-      console.error("Draw loop error:", err);
-    }
-  };
-
-  // ---- CAMERA AND DRAWING FUNCTIONS
-  const isCameraReady = () => {
-    return camFeed && camFeed.width > 0 && camFeed.height > 0;
-  };
-
-  const drawLoadingMessage = () => {
-    sk.fill(255);
-    sk.text("Loading camera...", sk.width / 2, sk.height / 2);
-  };
-
-  const drawCameraFeed = () => {
-    const drawX = camFeed.x || 0;
-    const drawY = camFeed.y || 0;
-    const drawWidth = camFeed.scaledWidth || camFeed.width || sk.width;
-    const drawHeight = camFeed.scaledHeight || camFeed.height || sk.height;
-    sk.image(camFeed, drawX, drawY, drawWidth, drawHeight);
-  };
-
-  // ---- HAND TRACKING AND GESTURE RECOGNITION
-  const updateHandTracking = () => {
-    const hand = gesturePipe.results.landmarks?.[0];
-    if (hand) {
-      const cx = sk.map(hand[9].x, 1, 0, 0, camFeed.scaledWidth);
-      const cy = sk.map(hand[9].y, 0, 1, 0, camFeed.scaledHeight);
-      lastValidHandPos = { x: cx, y: cy };
-    }
-  };
-
-  const getCurrentGesture = () => {
-    const gestures = gesturePipe.results.gestures?.[0];
-    const label = gestures?.[0]?.categoryName || "None";
-    const isFist = label === "Closed_Fist";
-    return { label, isFist };
-  };
-
-  const handleGestures = () => {
-    const { label, isFist } = getCurrentGesture();
-
-    if (isFist && !isSelecting && !isDeveloping) {
-      startSelection();
-    } else if (isSelecting && !isFist && !isDeveloping) {
-      triggerDevelopment();
-    } else if (isSelecting && isFist) {
-      updateSelection();
-    }
-  };
-
-  const startSelection = () => {
-    isSelecting = true;
-    selectionStart = { ...lastValidHandPos };
-    selectionEnd = { ...lastValidHandPos };
-  };
-
-  const triggerDevelopment = () => {
-    const frozenSelectionEnd = { ...selectionEnd };
-    isDeveloping = true;
-    developmentStartTime = sk.millis();
-    isSelecting = false;
-
-    // Store capture info for when development completes
-    const { x, y, w, h } = getSelectionBounds(
-      selectionStart.x,
-      selectionStart.y,
-      frozenSelectionEnd.x,
-      frozenSelectionEnd.y
-    );
-
-    pendingCapture = { x, y, w, h };
-
-    // Start the flash effect immediately
-    flash = createDevelopmentFlash(x, y, w, h);
-  };
-
-  const updateSelection = () => {
-    selectionEnd = { ...lastValidHandPos };
-  };
-
-  const resetSelection = () => {
-    selectionStart = null;
-    selectionEnd = null;
-  };
-
-  // ---- UI DRAWING FUNCTIONS
-  const drawSnapshots = () => {
-    const currentTime = sk.millis();
-    for (let i = snapshots.length - 1; i >= 0; i--) {
-      const { img, x, y, w, h, startTime } = snapshots[i];
-      const opacity = hasFade
-        ? sk.map(currentTime - startTime, 0, fadeDuration, 255, 0)
-        : 255;
-
-      if (hasFade && opacity <= 0) {
-        snapshots.splice(i, 1);
-      } else {
-        sk.push();
-        sk.tint(255, opacity);
-        sk.image(img, x, y, w, h);
-        sk.pop();
-      }
-    }
-  };
-
-  const drawSelectionRectangle = () => {
-    if (!(isSelecting || isDeveloping) || !selectionStart || !selectionEnd)
+    // Check camera readiness
+    if (!camFeed || camFeed.width <= 0 || camFeed.height <= 0) {
+      sk.fill(255);
+      sk.text("Loading camera...", sk.width / 2, sk.height / 2);
       return;
-
-    sk.push();
-    sk.noFill();
-    sk.stroke(255, 0, 0);
-    sk.strokeWeight(2);
-    strokeDash(sk, [5, 5]);
-
-    const { x, y, w, h } = getSelectionBounds(
-      selectionStart.x,
-      selectionStart.y,
-      selectionEnd.x,
-      selectionEnd.y
-    );
-
-    sk.rect(x, y, w, h);
-    sk.pop();
-  };
-
-  const drawFlashEffect = () => {
-    if (!flash) return;
-
-    const elapsed = sk.millis() - flash.flashStartTime;
-    if (elapsed < flash.flashDuration) {
-      const opacity = sk.map(elapsed, 0, flash.flashDuration, 255, 0);
-      sk.fill(255, opacity);
-      sk.noStroke();
-      sk.rect(flash.x, flash.y, flash.w, flash.h);
-    } else {
-      flash = null;
     }
-  };
 
-  const drawHandMarker = () => {
-    if (!lastValidHandPos) return;
+    // Draw camera feed
+    sk.image(camFeed, 0, 0, camFeed.scaledWidth, camFeed.scaledHeight);
 
-    sk.push();
-    if (isSelecting) {
-      // Red filled circle when selecting
-      sk.fill(255, 0, 0);
-      sk.noStroke();
+    // Get landmarks
+    const landmarksIndex = [4, 8, 9, 12, 16, 20, 3, 5, 13, 17];
+    const LM = getMappedLandmarks(sk, mediaPipe, camFeed, landmarksIndex);
+
+    // Update hand position
+    if (LM.X9 !== undefined && LM.Y9 !== undefined) {
+      lastValidHandPos = { x: LM.X9, y: LM.Y9 };
+    }
+
+    // Gesture detection
+    let isFist = false;
+    if (LM.X4 !== undefined && LM.Y4 !== undefined) {
+      const getDistance = (x1, y1, x2, y2) =>
+        Math.sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2);
+
+      const thumbDist = getDistance(LM.X4, LM.Y4, LM.X3, LM.Y3);
+      const indexDist = getDistance(LM.X8, LM.Y8, LM.X5, LM.Y5);
+      const middleDist = getDistance(LM.X12, LM.Y12, LM.X9, LM.Y9);
+      const ringDist = getDistance(LM.X16, LM.Y16, LM.X13, LM.Y13);
+      const pinkyDist = getDistance(LM.X20, LM.Y20, LM.X17, LM.Y17);
+
+      // More strict thresholds for better detection
+      const fistThreshold = 35; // Stricter for fist detection
+      const openThreshold = 70; // Higher threshold for open hand
+
+      const fistCount = [
+        thumbDist,
+        indexDist,
+        middleDist,
+        ringDist,
+        pinkyDist,
+      ].filter((dist) => dist < fistThreshold).length;
+
+      const openCount = [
+        thumbDist,
+        indexDist,
+        middleDist,
+        ringDist,
+        pinkyDist,
+      ].filter((dist) => dist > openThreshold).length;
+
+      // Require 4+ fingers closed for fist, 3+ fingers open for open hand
+      isFist = fistCount >= 4;
+      const isOpen = openCount >= 3;
+
+      // Add hysteresis - if we're currently selecting, require stronger open signal
+      if (isSelecting) {
+        isFist = fistCount >= 4 && openCount < 2; // Must be clearly closed
+      }
+    }
+
+    // Handle gesture stability
+    const currentGesture = isFist ? "fist" : "open";
+    if (currentGesture === lastGesture) {
+      gestureStableFrames++;
     } else {
-      // White outline circle when not selecting
+      gestureStableFrames = 0;
+      lastGesture = currentGesture;
+    }
+
+    const isStableGesture = gestureStableFrames >= requiredStableFrames;
+
+    // Handle selection logic
+    if (isStableGesture && isFist && !isSelecting && !isDeveloping) {
+      // Start selection
+      isSelecting = true;
+      selectionStart = { ...lastValidHandPos };
+      selectionEnd = { ...lastValidHandPos };
+    } else if (isSelecting && isStableGesture && !isFist && !isDeveloping) {
+      // End selection and start development - only if hand is clearly open
+      const isOpen =
+        LM.X4 !== undefined &&
+        [
+          Math.sqrt((LM.X4 - LM.X3) ** 2 + (LM.Y4 - LM.Y3) ** 2),
+          Math.sqrt((LM.X8 - LM.X5) ** 2 + (LM.Y8 - LM.Y5) ** 2),
+          Math.sqrt((LM.X12 - LM.X9) ** 2 + (LM.Y12 - LM.Y9) ** 2),
+          Math.sqrt((LM.X16 - LM.X13) ** 2 + (LM.Y16 - LM.Y13) ** 2),
+          Math.sqrt((LM.X20 - LM.X17) ** 2 + (LM.Y20 - LM.Y17) ** 2),
+        ].filter((dist) => dist > 70).length >= 3;
+
+      if (isOpen) {
+        isDeveloping = true;
+        developmentStartTime = sk.millis();
+        isSelecting = false;
+
+        const x = Math.min(selectionStart.x, selectionEnd.x);
+        const y = Math.min(selectionStart.y, selectionEnd.y);
+        const w = Math.abs(selectionStart.x - selectionEnd.x);
+        const h = Math.abs(selectionStart.y - selectionEnd.y);
+
+        pendingCapture = { x, y, w, h };
+        flash = {
+          x,
+          y,
+          w,
+          h,
+          flashDuration: developmentDuration,
+          flashStartTime: sk.millis(),
+        };
+      }
+    } else if (isSelecting && isFist) {
+      // Update selection while fist is held
+      selectionEnd = { ...lastValidHandPos };
+    }
+
+    // Draw snapshots
+    for (let i = snapshots.length - 1; i >= 0; i--) {
+      const { img, x, y, w, h } = snapshots[i];
+      sk.image(img, x, y, w, h);
+    }
+
+    // Draw selection rectangle
+    if ((isSelecting || isDeveloping) && selectionStart) {
+      sk.push();
       sk.noFill();
-      sk.stroke(255);
+      sk.stroke(255, 0, 0);
       sk.strokeWeight(2);
+      sk.drawingContext.setLineDash([5, 5]);
+
+      let bounds = pendingCapture || {
+        x: Math.min(selectionStart.x, selectionEnd.x),
+        y: Math.min(selectionStart.y, selectionEnd.y),
+        w: Math.abs(selectionStart.x - selectionEnd.x),
+        h: Math.abs(selectionStart.y - selectionEnd.y),
+      };
+
+      sk.rect(bounds.x, bounds.y, bounds.w, bounds.h);
+      sk.pop();
     }
-    sk.ellipse(lastValidHandPos.x, lastValidHandPos.y, 28);
-    sk.pop();
-  };
 
-  // ---- UTILITY FUNCTIONS
-  const getSelectionBounds = (startX, startY, endX, endY) => {
-    const x = Math.min(startX, endX);
-    const y = Math.min(startY, endY);
-    const w = Math.abs(startX - endX);
-    const h = Math.abs(startY - endY);
-    return { x, y, w, h };
-  };
+    // Draw flash effect
+    if (flash) {
+      const elapsed = sk.millis() - flash.flashStartTime;
+      if (elapsed < flash.flashDuration) {
+        const opacity = sk.map(elapsed, 0, flash.flashDuration, 255, 0);
+        sk.fill(255, opacity);
+        sk.noStroke();
+        sk.rect(flash.x, flash.y, flash.w, flash.h);
+      } else {
+        flash = null;
+      }
+    }
 
-  const captureSelection = (x, y, w, h) => {
-    // Calculate video coordinates for accurate capture
-    const videoX = (camFeed.width / camFeed.scaledWidth) * x;
-    const videoY = (camFeed.height / camFeed.scaledHeight) * y;
-    const videoW = (camFeed.width / camFeed.scaledWidth) * w;
-    const videoH = (camFeed.height / camFeed.scaledHeight) * h;
+    // Draw hand marker
+    if (lastValidHandPos) {
+      sk.push();
+      if (isSelecting) {
+        sk.fill(255, 0, 0);
+        sk.noStroke();
+      } else {
+        sk.noFill();
+        sk.stroke(255);
+        sk.strokeWeight(2);
+      }
+      sk.ellipse(lastValidHandPos.x, lastValidHandPos.y, 28);
+      sk.pop();
+    }
 
-    // Create snapshot graphics
-    const selectedImage = sk.createGraphics(w, h);
-    selectedImage.copy(camFeed, videoX, videoY, videoW, videoH, 0, 0, w, h);
+    // Draw landmarks
+    if (LM.X4 !== undefined) {
+      sk.push();
+      const landmarks = [
+        { x: LM.X4, y: LM.Y4, label: "4", color: [0, 255, 0] },
+        { x: LM.X8, y: LM.Y8, label: "8", color: [0, 255, 0] },
+        { x: LM.X12, y: LM.Y12, label: "12", color: [0, 255, 0] },
+        { x: LM.X16, y: LM.Y16, label: "16", color: [0, 255, 0] },
+        { x: LM.X20, y: LM.Y20, label: "20", color: [0, 255, 0] },
+        { x: LM.X3, y: LM.Y3, label: "3", color: [255, 0, 0] },
+        { x: LM.X5, y: LM.Y5, label: "5", color: [255, 0, 0] },
+        { x: LM.X9, y: LM.Y9, label: "9", color: [255, 0, 0] },
+        { x: LM.X13, y: LM.Y13, label: "13", color: [255, 0, 0] },
+        { x: LM.X17, y: LM.Y17, label: "17", color: [255, 0, 0] },
+      ];
 
-    // Add to snapshots array
-    snapshots.push({
-      img: selectedImage,
-      x,
-      y,
-      w,
-      h,
-      startTime: sk.millis(),
-    });
-  };
+      for (const landmark of landmarks) {
+        if (landmark.x !== undefined && landmark.y !== undefined) {
+          sk.fill(landmark.color[0], landmark.color[1], landmark.color[2]);
+          sk.noStroke();
+          sk.ellipse(landmark.x, landmark.y, 8);
+          sk.fill(255);
+          sk.textSize(10);
+          sk.text(landmark.label, landmark.x, landmark.y - 12);
+        }
+      }
+      sk.pop();
+    }
 
-  const createDevelopmentFlash = (x, y, w, h) => ({
-    x,
-    y,
-    w,
-    h,
-    flashDuration: developmentDuration,
-    flashStartTime: sk.millis(),
-  });
+    // Check if development is complete
+    if (isDeveloping && developmentStartTime) {
+      const elapsed = sk.millis() - developmentStartTime;
+      if (elapsed >= developmentDuration && pendingCapture) {
+        // Capture the snapshot
+        const { x, y, w, h } = pendingCapture;
+        const adjustedX = x + 1,
+          adjustedY = y + 1;
+        const adjustedW = w - 2,
+          adjustedH = h - 2;
 
-  const checkDevelopmentComplete = () => {
-    if (!isDeveloping || !developmentStartTime) return;
+        const relativeX = adjustedX,
+          relativeY = adjustedY;
+        const videoX = (camFeed.width / camFeed.scaledWidth) * relativeX;
+        const videoY = (camFeed.height / camFeed.scaledHeight) * relativeY;
+        const videoW = (camFeed.width / camFeed.scaledWidth) * adjustedW;
+        const videoH = (camFeed.height / camFeed.scaledHeight) * adjustedH;
 
-    const elapsed = sk.millis() - developmentStartTime;
-    if (elapsed >= developmentDuration && pendingCapture) {
-      // Development complete - capture the snapshot
-      const { x, y, w, h } = pendingCapture;
-      captureSelection(x, y, w, h);
+        const selectedImage = sk.createGraphics(adjustedW, adjustedH);
+        selectedImage.copy(
+          camFeed,
+          videoX,
+          videoY,
+          videoW,
+          videoH,
+          0,
+          0,
+          adjustedW,
+          adjustedH
+        );
 
-      // Reset development state
-      isDeveloping = false;
-      developmentStartTime = null;
-      pendingCapture = null;
-      resetSelection();
+        snapshots.push({
+          img: selectedImage,
+          x: adjustedX,
+          y: adjustedY,
+          w: adjustedW,
+          h: adjustedH,
+          startTime: sk.millis(),
+        });
+
+        // Reset development state
+        isDeveloping = false;
+        developmentStartTime = null;
+        pendingCapture = null;
+        selectionStart = null;
+        selectionEnd = null;
+      }
     }
   };
 
-  const strokeDash = (sk, dashPattern) => {
-    sk.drawingContext.setLineDash(dashPattern);
-  };
-
-  // ---- WINDOW RESIZE HANDLER
   sk.windowResized = () => {
     sk.resizeCanvas(window.innerWidth, window.innerHeight);
     updateFeedDimensions(sk, camFeed);
