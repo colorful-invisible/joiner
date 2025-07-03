@@ -26,13 +26,22 @@ new p5((sk) => {
 
   sk.draw = () => {
     try {
-      sk.image(
-        camFeed,
-        camFeed.x,
-        camFeed.y,
-        camFeed.scaledWidth,
-        camFeed.scaledHeight
-      );
+      sk.background(0);
+
+      // Check if camera feed is ready
+      if (!camFeed || camFeed.width === 0 || camFeed.height === 0) {
+        sk.fill(255);
+        sk.text("Loading camera...", sk.width / 2, sk.height / 2);
+        return;
+      }
+
+      // Draw camera feed with fallback dimensions
+      const drawX = camFeed.x || 0;
+      const drawY = camFeed.y || 0;
+      const drawWidth = camFeed.scaledWidth || camFeed.width || sk.width;
+      const drawHeight = camFeed.scaledHeight || camFeed.height || sk.height;
+
+      sk.image(camFeed, drawX, drawY, drawWidth, drawHeight);
 
       const hand = gesturePipe.results.landmarks?.[0];
       if (!hand) return;

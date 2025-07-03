@@ -11,28 +11,40 @@ let lastVideoTime = -1;
 
 export const gesturePipe = {
   results: {},
+  isInitialized: false,
   initialize: async () => {
-    const vision = await FilesetResolver.forVisionTasks(WASM_PATH);
-    gestureRecognizer = await GestureRecognizer.createFromOptions(vision, {
-      baseOptions: {
-        modelAssetPath: MODEL_PATH,
-        delegate: "GPU",
-      },
-      runningMode: "VIDEO",
-      numHands: 2, // Now recognizes both hands
-    });
+    try {
+      console.log("Initializing gesture recognizer...");
+      const vision = await FilesetResolver.forVisionTasks(WASM_PATH);
+      gestureRecognizer = await GestureRecognizer.createFromOptions(vision, {
+        baseOptions: {
+          modelAssetPath: MODEL_PATH,
+          delegate: "GPU",
+        },
+        runningMode: "VIDEO",
+        numHands: 2, // Now recognizes both hands
+      });
+      gesturePipe.isInitialized = true;
+      console.log("Gesture recognizer initialized successfully!");
+    } catch (error) {
+      console.error("Failed to initialize gesture recognizer:", error);
+    }
   },
   predict: async (video) => {
-    if (lastVideoTime !== video.elt.currentTime && gestureRecognizer) {
-      lastVideoTime = video.elt.currentTime;
-      const results = await gestureRecognizer.recognizeForVideo(
-        video.elt,
-        performance.now()
-      );
-      gesturePipe.results = results;
-    }
+    try {
+      if (lastVideoTime !== video.elt.currentTime && gestureRecognizer) {
+        lastVideoTime = video.elt.currentTime;
+        const results = await gestureRecognizer.recognizeForVideo(
+          video.elt,
+          performance.now()
+        );
+        gesturePipe.results = results;
+      }
 
-    window.requestAnimationFrame(() => gesturePipe.predict(video));
+      window.requestAnimationFrame(() => gesturePipe.predict(video));
+    } catch (error) {
+      console.error("Error during gesture prediction:", error);
+    }
   },
 };
 
