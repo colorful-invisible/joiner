@@ -1,4 +1,4 @@
-export const getMappedLandmarks = (sketch, mediaPipe, camFeed, indices) => {
+export const getMappedLandmarks = (sk, mediaPipe, camFeed, indices) => {
   const mappedLandmarks = {};
 
   if (mediaPipe.landmarks.length > 0 && mediaPipe.landmarks[0]) {
@@ -7,7 +7,7 @@ export const getMappedLandmarks = (sketch, mediaPipe, camFeed, indices) => {
         const LMX = `X${index}`;
         const LMY = `Y${index}`;
 
-        mappedLandmarks[LMX] = sketch.map(
+        mappedLandmarks[LMX] = sk.map(
           mediaPipe.landmarks[0][index].x,
           1,
           0,
@@ -15,7 +15,7 @@ export const getMappedLandmarks = (sketch, mediaPipe, camFeed, indices) => {
           camFeed.scaledWidth
         );
 
-        mappedLandmarks[LMY] = sketch.map(
+        mappedLandmarks[LMY] = sk.map(
           mediaPipe.landmarks[0][index].y,
           0,
           1,

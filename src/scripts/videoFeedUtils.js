@@ -3,7 +3,7 @@
 export function initializeCamCapture(sk, mediaPipeHandler) {
   const camFeed = sk.createCapture(
     {
-      // flipped: true,
+      flipped: true,
       audio: false,
       video: {
         width: { ideal: 1920, min: 1280 },

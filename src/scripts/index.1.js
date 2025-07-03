@@ -1,6 +1,6 @@
 import p5 from "p5";
 import { mediaPipe } from "./handsModelMediaPipe";
-import { initializeCamCapture, calculateVideoDimensions } from "./cameraUtils";
+import { initializeCamCapture, updateFeedDimensions } from "./videoFeedUtils";
 import { getMappedLandmarks } from "./landmarksHandler";
 import { averageLandmarkPosition } from "./utils";
 
@@ -35,22 +35,23 @@ new p5((sk) => {
 
   sk.draw = () => {
     sk.push();
-    sk.image(camFeed, 0, 0, camFeed.scaledWidth, camFeed.scaledHeight);
+    sk.image(
+      camFeed,
+      camFeed.x,
+      camFeed.y,
+      camFeed.scaledWidth,
+      camFeed.scaledHeight
+    );
     sk.pop();
 
     // GET LANDMARKS
     const landmarksIndex = [4, 8];
-    const landmarks = getMappedLandmarks(
-      sk,
-      mediaPipe,
-      camFeed,
-      landmarksIndex
-    );
+    const LM = getMappedLandmarks(sk, mediaPipe, camFeed, landmarksIndex);
 
-    let thumbX = avgPos("tX", landmarks.LM0_4X);
-    let thumbY = avgPos("tY", landmarks.LM0_4Y);
-    let indexX = avgPos("iX", landmarks.LM0_8X);
-    let indexY = avgPos("iY", landmarks.LM0_8Y);
+    let thumbX = avgPos("tX", LM.X4);
+    let thumbY = avgPos("tY", LM.Y4);
+    let indexX = avgPos("iX", LM.X8);
+    let indexY = avgPos("iY", LM.Y8);
 
     let centerX = (thumbX + indexX) / 2;
     let centerY = (thumbY + indexY) / 2;
@@ -265,7 +266,7 @@ new p5((sk) => {
 
   sk.windowResized = () => {
     sk.resizeCanvas(window.innerWidth, window.innerHeight);
-    calculateVideoDimensions(sk, camFeed);
+    updateFeedDimensions(sk, camFeed);
   };
 });
 

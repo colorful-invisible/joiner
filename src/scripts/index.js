@@ -46,17 +46,12 @@ new p5((sk) => {
 
     // GET LANDMARKS
     const landmarksIndex = [4, 8];
-    const landmarks = getMappedLandmarks(
-      sk,
-      mediaPipe,
-      camFeed,
-      landmarksIndex
-    );
+    const LM = getMappedLandmarks(sk, mediaPipe, camFeed, landmarksIndex);
 
-    let thumbX = avgPos("tX", landmarks.X4);
-    let thumbY = avgPos("tY", landmarks.Y4);
-    let indexX = avgPos("iX", landmarks.X8);
-    let indexY = avgPos("iY", landmarks.Y8);
+    let thumbX = avgPos("tX", LM.X4);
+    let thumbY = avgPos("tY", LM.Y4);
+    let indexX = avgPos("iX", LM.X8);
+    let indexY = avgPos("iY", LM.Y8);
 
     let centerX = (thumbX + indexX) / 2;
     let centerY = (thumbY + indexY) / 2;
