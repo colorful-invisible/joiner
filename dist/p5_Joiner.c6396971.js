@@ -674,7 +674,7 @@ var _gestureRecognizer = require("./gestureRecognizer");
 var _videoFeedUtils = require("./videoFeedUtils");
 new (0, _p5Default.default)((sk)=>{
     // ---- CONFIGURATION
-    const countdownDuration = 2000;
+    const developmentDuration = 2000; // Flash development time
     const hasFade = false;
     const fadeDuration = 30000;
     // ---- STATE VARIABLES
@@ -686,9 +686,10 @@ new (0, _p5Default.default)((sk)=>{
     let isSelecting = false;
     let selectionStart = null;
     let selectionEnd = null;
-    // Countdown state
-    let countdownActive = false;
-    let countdownStartTime = null;
+    // Development state
+    let isDeveloping = false;
+    let developmentStartTime = null;
+    let pendingCapture = null; // Store capture info while developing
     // Visual effects
     let flash = null;
     // ---- SETUP
@@ -715,11 +716,12 @@ new (0, _p5Default.default)((sk)=>{
             // 4. Handle gesture recognition
             handleGestures();
             // 5. Draw UI elements
-            drawCountdown();
             drawSnapshots();
             drawSelectionRectangle();
             drawFlashEffect();
             drawHandMarker();
+            // 6. Check if development is complete
+            checkDevelopmentComplete();
         } catch (err) {
             console.error("Draw loop error:", err);
         }
@@ -762,8 +764,8 @@ new (0, _p5Default.default)((sk)=>{
     };
     const handleGestures = ()=>{
         const { label, isFist } = getCurrentGesture();
-        if (isFist && !isSelecting && !countdownActive) startSelection();
-        else if (isSelecting && !isFist && !countdownActive) triggerCountdown();
+        if (isFist && !isSelecting && !isDeveloping) startSelection();
+        else if (isSelecting && !isFist && !isDeveloping) triggerDevelopment();
         else if (isSelecting && isFist) updateSelection();
     };
     const startSelection = ()=>{
@@ -775,22 +777,23 @@ new (0, _p5Default.default)((sk)=>{
             ...lastValidHandPos
         };
     };
-    const triggerCountdown = ()=>{
-        if (!sk._snapshotTimeout) {
-            const frozenSelectionEnd = {
-                ...selectionEnd
-            };
-            countdownActive = true;
-            countdownStartTime = sk.millis();
-            isSelecting = false;
-            sk._snapshotTimeout = setTimeout(()=>{
-                countdownActive = false;
-                const { x, y, w, h } = getSelectionBounds(selectionStart.x, selectionStart.y, frozenSelectionEnd.x, frozenSelectionEnd.y);
-                captureSelection(x, y, w, h);
-                resetSelection();
-                sk._snapshotTimeout = null;
-            }, countdownDuration);
-        }
+    const triggerDevelopment = ()=>{
+        const frozenSelectionEnd = {
+            ...selectionEnd
+        };
+        isDeveloping = true;
+        developmentStartTime = sk.millis();
+        isSelecting = false;
+        // Store capture info for when development completes
+        const { x, y, w, h } = getSelectionBounds(selectionStart.x, selectionStart.y, frozenSelectionEnd.x, frozenSelectionEnd.y);
+        pendingCapture = {
+            x,
+            y,
+            w,
+            h
+        };
+        // Start the flash effect immediately
+        flash = createDevelopmentFlash(x, y, w, h);
     };
     const updateSelection = ()=>{
         selectionEnd = {
@@ -802,25 +805,6 @@ new (0, _p5Default.default)((sk)=>{
         selectionEnd = null;
     };
     // ---- UI DRAWING FUNCTIONS
-    const drawCountdown = ()=>{
-        if (!countdownActive || !countdownStartTime) return;
-        const elapsed = sk.millis() - countdownStartTime;
-        const remaining = countdownDuration - elapsed;
-        const countdownNumber = Math.ceil(remaining / 1000) + 1;
-        if (countdownNumber >= 2 && countdownNumber <= 3) {
-            sk.push();
-            sk.textSize(32);
-            sk.textAlign(sk.CENTER, sk.CENTER);
-            sk.stroke(255);
-            sk.strokeWeight(2);
-            sk.noFill();
-            sk.ellipse(50, 50, 60);
-            sk.fill(255);
-            sk.noStroke();
-            sk.text(countdownNumber, 50, 50);
-            sk.pop();
-        }
-    };
     const drawSnapshots = ()=>{
         const currentTime = sk.millis();
         for(let i = snapshots.length - 1; i >= 0; i--){
@@ -836,7 +820,7 @@ new (0, _p5Default.default)((sk)=>{
         }
     };
     const drawSelectionRectangle = ()=>{
-        if (!(isSelecting || countdownActive) || !selectionStart || !selectionEnd) return;
+        if (!(isSelecting || isDeveloping) || !selectionStart || !selectionEnd) return;
         sk.push();
         sk.noFill();
         sk.stroke(255, 0, 0);
@@ -853,7 +837,7 @@ new (0, _p5Default.default)((sk)=>{
         if (!flash) return;
         const elapsed = sk.millis() - flash.flashStartTime;
         if (elapsed < flash.flashDuration) {
-            const opacity = sk.map(elapsed, 0, flash.flashDuration, 124, 0);
+            const opacity = sk.map(elapsed, 0, flash.flashDuration, 255, 0);
             sk.fill(255, opacity);
             sk.noStroke();
             sk.rect(flash.x, flash.y, flash.w, flash.h);
@@ -906,17 +890,29 @@ new (0, _p5Default.default)((sk)=>{
             h,
             startTime: sk.millis()
         });
-        // Trigger flash effect
-        flash = createFlashEffect(x, y, w, h);
     };
-    const createFlashEffect = (x, y, w, h)=>({
+    const createDevelopmentFlash = (x, y, w, h)=>({
             x,
             y,
             w,
             h,
-            flashDuration: 500,
+            flashDuration: developmentDuration,
             flashStartTime: sk.millis()
         });
+    const checkDevelopmentComplete = ()=>{
+        if (!isDeveloping || !developmentStartTime) return;
+        const elapsed = sk.millis() - developmentStartTime;
+        if (elapsed >= developmentDuration && pendingCapture) {
+            // Development complete - capture the snapshot
+            const { x, y, w, h } = pendingCapture;
+            captureSelection(x, y, w, h);
+            // Reset development state
+            isDeveloping = false;
+            developmentStartTime = null;
+            pendingCapture = null;
+            resetSelection();
+        }
+    };
     const strokeDash = (sk, dashPattern)=>{
         sk.drawingContext.setLineDash(dashPattern);
     };
