@@ -63,7 +63,7 @@ new p5((sk) => {
   }
 
   function detectPoseGesture(LM) {
-    const poseThreshold = 180;
+    const poseThreshold = 96;
 
     if (LM.X21 !== undefined && LM.X22 !== undefined) {
       // Average landmarks for stability
@@ -103,13 +103,12 @@ new p5((sk) => {
     sk.textSize(20);
     sk.textAlign(sk.CENTER, sk.CENTER);
     camFeed = initializeCamCapture(sk, useHandModel ? handModel : poseModel);
+    const toggleSwitch = document.getElementById("checkboxInput");
+    const toggleText = document.getElementById("toggleText");
 
-    const toggleButton = document.getElementById("modelToggle");
-    toggleButton.addEventListener("click", () => {
-      useHandModel = !useHandModel;
-      toggleButton.querySelector(".toggle-text").textContent = useHandModel
-        ? "HAND"
-        : "POSE";
+    toggleSwitch.addEventListener("change", () => {
+      useHandModel = !toggleSwitch.checked; // Inverted logic: unchecked = HAND, checked = POSE
+      toggleText.textContent = useHandModel ? "HAND" : "POSE";
 
       // Reinitialize camera with new model
       camFeed = initializeCamCapture(sk, useHandModel ? handModel : poseModel);

@@ -721,7 +721,7 @@ new (0, _p5Default.default)((sk)=>{
         };
     }
     function detectPoseGesture(LM) {
-        const poseThreshold = 180;
+        const poseThreshold = 96;
         if (LM.X21 !== undefined && LM.X22 !== undefined) {
             // Average landmarks for stability
             const X21 = avg("x21", LM.X21);
@@ -767,10 +767,11 @@ new (0, _p5Default.default)((sk)=>{
         sk.textSize(20);
         sk.textAlign(sk.CENTER, sk.CENTER);
         camFeed = (0, _videoFeedUtils.initializeCamCapture)(sk, useHandModel ? (0, _handsModel.mediaPipe) : (0, _poseModel.mediaPipe));
-        const toggleButton = document.getElementById("modelToggle");
-        toggleButton.addEventListener("click", ()=>{
-            useHandModel = !useHandModel;
-            toggleButton.querySelector(".toggle-text").textContent = useHandModel ? "HAND" : "POSE";
+        const toggleSwitch = document.getElementById("checkboxInput");
+        const toggleText = document.getElementById("toggleText");
+        toggleSwitch.addEventListener("change", ()=>{
+            useHandModel = !toggleSwitch.checked; // Inverted logic: unchecked = HAND, checked = POSE
+            toggleText.textContent = useHandModel ? "HAND" : "POSE";
             // Reinitialize camera with new model
             camFeed = (0, _videoFeedUtils.initializeCamCapture)(sk, useHandModel ? (0, _handsModel.mediaPipe) : (0, _poseModel.mediaPipe));
         });

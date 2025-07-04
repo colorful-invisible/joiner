@@ -28,34 +28,55 @@ canvas {
   bottom: 20px;
   right: 20px;
   z-index: 1000;
-}
-
-.toggle-button {
-  background: rgba(0, 0, 0, 0.8);
-  color: white;
-  border: 2px solid white;
-  border-radius: 25px;
-  padding: 10px 20px;
-  font-size: 16px;
-  font-weight: bold;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  backdrop-filter: blur(5px);
-  min-width: 80px;
-}
-
-.toggle-button:hover {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: #ffff00;
-  color: #ffff00;
-  transform: scale(1.05);
-}
-
-.toggle-button:active {
-  transform: scale(0.95);
+  display: flex;
+  align-items: center;
+  gap: 15px;
 }
 
 .toggle-text {
-  display: inline-block;
-  transition: all 0.3s ease;
+  color: white;
+  font-size: 20px;
+  font-family: Helvetica, Arial, sans-serif;
+}
+
+/* To hide the checkbox */
+#checkboxInput {
+  display: none;
+}
+
+.toggleSwitch {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  width: 50px;
+  height: 30px;
+  border-radius: 20px;
+  border: 2px solid rgba(255, 255, 255);
+  cursor: pointer;
+  transition-duration: 0.2s;
+}
+
+.toggleSwitch::after {
+  content: "";
+  position: absolute;
+  height: 10px;
+  width: 10px;
+  left: 5px;
+  background-color: transparent;
+  border-radius: 50%;
+  transition-duration: 0.2s;
+
+  border: 5px solid white;
+}
+
+#checkboxInput:checked + .toggleSwitch::after {
+  transform: translateX(100%);
+  transition-duration: 0.2s;
+  background-color: rgb(255, 255, 255);
+}
+
+/* Switch background change */
+#checkboxInput:checked + .toggleSwitch {
+  transition-duration: 0.2s;
 }
