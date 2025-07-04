@@ -15,12 +15,10 @@ new p5((sk) => {
   let flash = null;
 
   const developmentDuration = 750;
+  const centroidThreshold = 48;
   const minSnapshotSize = 80; // Minimum size of the dimesions in pixels for a valid snapshot
-  const baseCentroidThreshold = 32; // Base threshold for centroid distance (camera distance relation)
-  const referenceHandSize = 128;
-
   const snapshotLimit = 20; // Maximum number of snapshots to keep
-  const fadeEnabled = true;
+  const fadeEnabled = false;
   const fadeStartTime = 120000; // Start fading after
   const fadeDuration = 10000;
 
@@ -43,35 +41,26 @@ new p5((sk) => {
 
     sk.image(camFeed, 0, 0, camFeed.scaledWidth, camFeed.scaledHeight);
 
-    const landmarksIndex = [4, 8, 12, 0];
+    const landmarksIndex = [4, 8, 12];
     const LM = getMappedLandmarks(sk, mediaPipe, camFeed, landmarksIndex);
 
     let centroid = null;
     let gesture = "released";
-    let dynamicThreshold = baseCentroidThreshold;
 
-    if (
-      LM.X4 !== undefined &&
-      LM.X8 !== undefined &&
-      LM.X12 !== undefined &&
-      LM.X0 !== undefined
-    ) {
+    if (LM.X4 !== undefined && LM.X8 !== undefined && LM.X12 !== undefined) {
       centroid = {
         x: (LM.X4 + LM.X8 + LM.X12) / 3,
         y: (LM.Y4 + LM.Y8 + LM.Y12) / 3,
       };
-
-      const handSize = sk.dist(LM.X0, LM.Y0, LM.X12, LM.Y12);
-      dynamicThreshold = (handSize / referenceHandSize) * baseCentroidThreshold;
 
       const dThumbToCentroid = sk.dist(LM.X4, LM.Y4, centroid.x, centroid.y);
       const dIndexToCentroid = sk.dist(LM.X8, LM.Y8, centroid.x, centroid.y);
       const dMiddleToCentroid = sk.dist(LM.X12, LM.Y12, centroid.x, centroid.y);
 
       if (
-        dThumbToCentroid < dynamicThreshold &&
-        dIndexToCentroid < dynamicThreshold &&
-        dMiddleToCentroid < dynamicThreshold
+        dThumbToCentroid < centroidThreshold &&
+        dIndexToCentroid < centroidThreshold &&
+        dMiddleToCentroid < centroidThreshold
       ) {
         gesture = "selecting";
       }

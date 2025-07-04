@@ -15,12 +15,11 @@ new p5((sk) => {
   let flash = null;
 
   const developmentDuration = 750;
+  const baseCentroidThreshold = 48;
+  const referenceHandSize = 150;
   const minSnapshotSize = 80; // Minimum size of the dimesions in pixels for a valid snapshot
-  const baseCentroidThreshold = 32; // Base threshold for centroid distance (camera distance relation)
-  const referenceHandSize = 128;
-
   const snapshotLimit = 20; // Maximum number of snapshots to keep
-  const fadeEnabled = true;
+  const fadeEnabled = false;
   const fadeStartTime = 120000; // Start fading after
   const fadeDuration = 10000;
 
@@ -202,6 +201,12 @@ new p5((sk) => {
       sk.ellipse(centroid.x, centroid.y, 24);
       sk.pop();
     }
+
+    // Debug display
+    sk.fill(255);
+    sk.textAlign(sk.LEFT, sk.TOP);
+    sk.textSize(16);
+    sk.text(`Threshold: ${dynamicThreshold.toFixed(1)}`, 10, 10);
 
     // if (centroid) {
     //   sk.push();
