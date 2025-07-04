@@ -4,6 +4,7 @@ import { initializeCamCapture, updateFeedDimensions } from "./videoFeedUtils";
 import { getMappedLandmarks } from "./landmarksHandler";
 
 new p5((sk) => {
+  // State
   let camFeed;
   let snapshots = [];
   let isSelecting = false;
@@ -14,10 +15,8 @@ new p5((sk) => {
   let pendingCapture = null;
   let flash = null;
 
-  const developmentDuration = 1000;
-  const snapshotLimit = 20;
-  const centroidThreshold = 48;
-  const minSnapshotSize = 80;
+  // Config
+  const developmentDuration = 2000;
 
   sk.setup = () => {
     sk.createCanvas(sk.windowWidth, sk.windowHeight);
@@ -30,17 +29,21 @@ new p5((sk) => {
   sk.draw = () => {
     sk.background(0);
 
+    // Check camera readiness
     if (!camFeed || camFeed.width <= 0 || camFeed.height <= 0) {
       sk.fill(255);
       sk.text("Loading camera...", sk.width / 2, sk.height / 2);
       return;
     }
 
+    // Draw camera feed
     sk.image(camFeed, 0, 0, camFeed.scaledWidth, camFeed.scaledHeight);
 
-    const landmarksIndex = [4, 8, 12];
+    // Get only needed landmarks
+    const landmarksIndex = [4, 8, 12]; // Only thumb, index, middle tips
     const LM = getMappedLandmarks(sk, mediaPipe, camFeed, landmarksIndex);
 
+    // Calculate centroid and gesture in one pass
     let centroid = null;
     let gesture = "released";
 
@@ -50,19 +53,20 @@ new p5((sk) => {
         y: (LM.Y4 + LM.Y8 + LM.Y12) / 3,
       };
 
+      // Check if all fingertips are close to the centroid
       const dThumbToCentroid = sk.dist(LM.X4, LM.Y4, centroid.x, centroid.y);
       const dIndexToCentroid = sk.dist(LM.X8, LM.Y8, centroid.x, centroid.y);
       const dMiddleToCentroid = sk.dist(LM.X12, LM.Y12, centroid.x, centroid.y);
 
       if (
-        dThumbToCentroid < centroidThreshold &&
-        dIndexToCentroid < centroidThreshold &&
-        dMiddleToCentroid < centroidThreshold
+        dThumbToCentroid < 60 &&
+        dIndexToCentroid < 60 &&
+        dMiddleToCentroid < 60
       ) {
         gesture = "selecting";
       }
     }
-
+    // Selection logic
     if (gesture === "selecting" && !isSelecting && !isDeveloping && centroid) {
       isSelecting = true;
       selectionStart = { ...centroid };
@@ -71,39 +75,32 @@ new p5((sk) => {
       selectionEnd = { ...centroid };
     } else if (gesture === "released" && isSelecting) {
       isSelecting = false;
-      const w = Math.abs(selectionStart.x - selectionEnd.x);
-      const h = Math.abs(selectionStart.y - selectionEnd.y);
-
-      // Only start development if selection is large enough
-      if (w > minSnapshotSize && h > minSnapshotSize) {
-        isDeveloping = true;
-        developmentStartTime = sk.millis();
-        pendingCapture = {
-          x: Math.min(selectionStart.x, selectionEnd.x),
-          y: Math.min(selectionStart.y, selectionEnd.y),
-          w,
-          h,
-        };
-        flash = {
-          ...pendingCapture,
-          flashDuration: developmentDuration,
-          flashStartTime: sk.millis(),
-        };
-      } else {
-        // Reset immediately for small selections
-        selectionStart = null;
-        selectionEnd = null;
-      }
+      isDeveloping = true;
+      developmentStartTime = sk.millis();
+      pendingCapture = {
+        x: Math.min(selectionStart.x, selectionEnd.x),
+        y: Math.min(selectionStart.y, selectionEnd.y),
+        w: Math.abs(selectionStart.x - selectionEnd.x),
+        h: Math.abs(selectionStart.y - selectionEnd.y),
+      };
+      flash = {
+        ...pendingCapture,
+        flashDuration: developmentDuration,
+        flashStartTime: sk.millis(),
+      };
     }
 
+    // Draw snapshots
     for (let i = snapshots.length - 1; i >= 0; i--) {
       const { img, x, y, w, h } = snapshots[i];
       sk.image(img, x, y, w, h);
     }
 
+    // Draw selection rectangle
     if ((isSelecting || isDeveloping) && selectionStart) {
       sk.push();
       sk.noFill();
+      sk.stroke(255, 0, 0);
       sk.strokeWeight(2);
       sk.drawingContext.setLineDash([5, 5]);
 
@@ -114,18 +111,11 @@ new p5((sk) => {
         h: Math.abs(selectionStart.y - selectionEnd.y),
       };
 
-      // Yellow for too small, red for good size
-      if (bounds.w < minSnapshotSize || bounds.h < minSnapshotSize) {
-        sk.stroke(255, 255, 0); // Yellow
-      } else {
-        sk.stroke(255, 0, 0); // Red
-      }
-
       sk.rect(bounds.x, bounds.y, bounds.w, bounds.h);
-      sk.drawingContext.setLineDash([]);
       sk.pop();
     }
 
+    // Draw flash effect
     if (flash) {
       const elapsed = sk.millis() - flash.flashStartTime;
       if (elapsed < flash.flashDuration) {
@@ -138,22 +128,11 @@ new p5((sk) => {
       }
     }
 
+    // Draw selection tip at centroid
     if (centroid) {
       sk.push();
       if (isSelecting) {
-        // Check if current selection is large enough
-        const currentW = selectionEnd
-          ? Math.abs(selectionStart.x - selectionEnd.x)
-          : 0;
-        const currentH = selectionEnd
-          ? Math.abs(selectionStart.y - selectionEnd.y)
-          : 0;
-
-        if (currentW < minSnapshotSize || currentH < minSnapshotSize) {
-          sk.fill(255, 255, 0); // Yellow for too small
-        } else {
-          sk.fill(255, 0, 0); // Red for good size
-        }
+        sk.fill(255, 0, 0);
         sk.noStroke();
       } else {
         sk.noFill();
@@ -164,23 +143,24 @@ new p5((sk) => {
       sk.pop();
     }
 
-    // if (centroid) {
-    //   sk.push();
-    //   sk.fill(0, 255, 0);
-    //   sk.noStroke();
-    //   sk.ellipse(LM.X4, LM.Y4, 8);
-    //   sk.ellipse(LM.X8, LM.Y8, 8);
-    //   sk.ellipse(LM.X12, LM.Y12, 8);
-    //   sk.pop();
-    // }
+    // Draw fingertips
+    if (centroid) {
+      sk.push();
+      sk.fill(0, 255, 0);
+      sk.noStroke();
+      sk.ellipse(LM.X4, LM.Y4, 8);
+      sk.ellipse(LM.X8, LM.Y8, 8);
+      sk.ellipse(LM.X12, LM.Y12, 8);
+      sk.pop();
+    }
 
+    // Complete development
     if (
       isDeveloping &&
       sk.millis() - developmentStartTime >= developmentDuration &&
       pendingCapture
     ) {
       const { x, y, w, h } = pendingCapture;
-
       const videoX = (camFeed.width / camFeed.scaledWidth) * x;
       const videoY = (camFeed.height / camFeed.scaledHeight) * y;
       const videoW = (camFeed.width / camFeed.scaledWidth) * w;
@@ -198,10 +178,7 @@ new p5((sk) => {
         startTime: sk.millis(),
       });
 
-      if (snapshots.length > snapshotLimit) {
-        snapshots.shift();
-      }
-
+      // Reset
       isDeveloping = false;
       developmentStartTime = null;
       pendingCapture = null;
