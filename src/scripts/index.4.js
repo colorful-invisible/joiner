@@ -3,7 +3,6 @@ import { mediaPipe as handModel } from "./handsModel";
 import { mediaPipe as poseModel } from "./poseModel";
 import { initializeCamCapture, updateFeedDimensions } from "./videoFeedUtils";
 import { getMappedLandmarks } from "./landmarksHandler";
-import { createAveragePosition } from "./utils";
 
 new p5((sk) => {
   let camFeed;
@@ -21,10 +20,8 @@ new p5((sk) => {
   const minSnapshotSize = 80; // Minimum dimesions in pixels for a valid snapshot
   const snapshotLimit = 20; // Maximum number of snapshots to keep
   const fadeEnabled = true;
-  const fadeStartTime = 120000;
+  const fadeStartTime = 120000; // Start fading after
   const fadeDuration = 10000;
-
-  const avg = createAveragePosition(6);
 
   function detectHandGesture(LM) {
     const baseCentroidThreshold = 32; // Base threshold for centroid distance (camera distance relation)
@@ -63,38 +60,28 @@ new p5((sk) => {
   }
 
   function detectPoseGesture(LM) {
-    const poseThreshold = 180;
+    const poseThreshold = 80;
 
     if (LM.X21 !== undefined && LM.X22 !== undefined) {
-      // Average landmarks for stability
-      const X21 = avg("x21", LM.X21);
-      const Y21 = avg("y21", LM.Y21);
-      const X22 = avg("x22", LM.X22);
-      const Y22 = avg("y22", LM.Y22);
-
-      // Use center point between landmarks 21 and 22 as centroid
+      // Use landmark 22 (right index fingertip) as the tip position
       const centroid = {
-        x: (X21 + X22) / 2,
-        y: (Y21 + Y22) / 2,
+        x: LM.X22,
+        y: LM.Y22,
       };
 
-      const distance = sk.dist(X21, Y21, X22, Y22);
+      // Use distance between landmarks 21 and 22 as the trigger
+      const distance = sk.dist(LM.X21, LM.Y21, LM.X22, LM.Y22);
+
+      console.log("Pose distance:", distance, "threshold:", poseThreshold);
 
       if (distance < poseThreshold) {
-        return {
-          gesture: "selecting",
-          centroid,
-          landmarks: { X21, Y21, X22, Y22 },
-        };
+        return { gesture: "selecting", centroid };
       }
 
-      return {
-        gesture: "released",
-        centroid,
-        landmarks: { X21, Y21, X22, Y22 },
-      };
+      return { gesture: "released", centroid };
     }
-    return { gesture: "released", centroid: null, landmarks: null };
+    console.log("Pose landmarks 21 or 22 not found");
+    return { gesture: "released", centroid: null };
   }
 
   sk.setup = () => {
@@ -104,6 +91,7 @@ new p5((sk) => {
     sk.textAlign(sk.CENTER, sk.CENTER);
     camFeed = initializeCamCapture(sk, useHandModel ? handModel : poseModel);
 
+    // Add toggle button event listener
     const toggleButton = document.getElementById("modelToggle");
     toggleButton.addEventListener("click", () => {
       useHandModel = !useHandModel;
@@ -127,17 +115,26 @@ new p5((sk) => {
 
     sk.image(camFeed, 0, 0, camFeed.scaledWidth, camFeed.scaledHeight);
 
+    // Get the current model and landmark indices
     const currentModel = useHandModel ? handModel : poseModel;
-    const landmarksIndex = useHandModel ? [4, 8, 12, 0] : [21, 22];
+    const landmarksIndex = useHandModel ? [4, 8, 12, 0] : [21, 22]; // Hand: thumb, index, middle, wrist | Pose: both index fingertips for distance check
+
+    // Debug: Log model state
+    if (!useHandModel) {
+      console.log("Pose model landmarks count:", currentModel.landmarks.length);
+      if (currentModel.landmarks.length > 0) {
+        console.log("First pose landmarks:", currentModel.landmarks[0]);
+      }
+    }
 
     const LM = getMappedLandmarks(sk, currentModel, camFeed, landmarksIndex);
 
+    // Get gesture and centroid using the appropriate model
     const gestureResult = useHandModel
       ? detectHandGesture(LM)
       : detectPoseGesture(LM);
     const centroid = gestureResult.centroid;
     const gesture = gestureResult.gesture;
-    const landmarks = gestureResult.landmarks;
 
     if (gesture === "selecting" && !isSelecting && !isDeveloping && centroid) {
       isSelecting = true;
@@ -150,6 +147,7 @@ new p5((sk) => {
       const w = Math.abs(selectionStart.x - selectionEnd.x);
       const h = Math.abs(selectionStart.y - selectionEnd.y);
 
+      // Only start development if selection is large enough
       if (w > minSnapshotSize || h > minSnapshotSize) {
         isDeveloping = true;
         developmentStartTime = sk.millis();
@@ -177,21 +175,26 @@ new p5((sk) => {
       if (fadeEnabled) {
         const elapsed = sk.millis() - startTime;
         if (elapsed > fadeStartTime) {
+          // Calculate fade opacity
           const fadeElapsed = elapsed - fadeStartTime;
           const opacity = sk.map(fadeElapsed, 0, fadeDuration, 255, 0);
 
           if (opacity <= 0) {
+            // Remove completely faded snapshots
             snapshots.splice(i, 1);
             continue;
           }
 
+          // Apply fade
           sk.tint(255, opacity);
           sk.image(img, x, y, w, h);
           sk.noTint();
         } else {
+          // No fade yet
           sk.image(img, x, y, w, h);
         }
       } else {
+        // No fade, normal display
         sk.image(img, x, y, w, h);
       }
     }
@@ -209,6 +212,7 @@ new p5((sk) => {
         h: Math.abs(selectionStart.y - selectionEnd.y),
       };
 
+      // Yellow for too small, red for good size selection
       if (bounds.w < minSnapshotSize && bounds.h < minSnapshotSize) {
         sk.stroke(255, 255, 0); // Yellow
       } else {
@@ -235,6 +239,7 @@ new p5((sk) => {
     if (centroid) {
       sk.push();
       if (isSelecting) {
+        // Check if current selection is large enough
         const currentW = selectionEnd
           ? Math.abs(selectionStart.x - selectionEnd.x)
           : 0;
@@ -243,9 +248,9 @@ new p5((sk) => {
           : 0;
 
         if (currentW < minSnapshotSize && currentH < minSnapshotSize) {
-          sk.fill(255, 255, 0);
+          sk.fill(255, 255, 0); // Yellow for too small
         } else {
-          sk.fill(255, 0, 0);
+          sk.fill(255, 0, 0); // Red for good size
         }
         sk.noStroke();
       } else {
@@ -257,20 +262,21 @@ new p5((sk) => {
       sk.pop();
     }
 
-    // Show pose landmarks 21 and 22 for precision
-    if (!useHandModel && landmarks) {
-      sk.push();
-      sk.fill(0, 255, 0); // Green for landmark points
-      sk.noStroke();
-      sk.ellipse(landmarks.X21, landmarks.Y21, 12); // Landmark 21
-      sk.ellipse(landmarks.X22, landmarks.Y22, 12); // Landmark 22
-
-      // Draw line between landmarks
-      sk.stroke(0, 255, 0);
-      sk.strokeWeight(2);
-      sk.line(landmarks.X21, landmarks.Y21, landmarks.X22, landmarks.Y22);
-      sk.pop();
-    }
+    // Debug: Show landmark points (uncomment for debugging)
+    // if (centroid) {
+    //   sk.push();
+    //   sk.fill(0, 255, 0);
+    //   sk.noStroke();
+    //   if (useHandModel) {
+    //     sk.ellipse(LM.X4, LM.Y4, 8);  // Thumb
+    //     sk.ellipse(LM.X8, LM.Y8, 8);  // Index
+    //     sk.ellipse(LM.X12, LM.Y12, 8); // Middle
+    //   } else {
+    //     sk.ellipse(LM.X19, LM.Y19, 8); // Left index
+    //     sk.ellipse(LM.X20, LM.Y20, 8); // Right index
+    //   }
+    //   sk.pop();
+    // }
 
     if (
       isDeveloping &&

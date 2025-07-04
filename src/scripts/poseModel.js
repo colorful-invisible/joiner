@@ -17,6 +17,7 @@ export const mediaPipe = {
   worldLandmarks: [],
   initialize: async () => {
     try {
+      console.log("Initializing pose model...");
       const vision = await FilesetResolver.forVisionTasks(MODEL_URL_WASM);
       poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
         baseOptions: {
@@ -26,12 +27,23 @@ export const mediaPipe = {
         runningMode: RUNNING_MODE,
         numPoses: NUM_POSES,
       });
+      console.log("Pose model initialized successfully");
     } catch (error) {
       console.error("Failed to initialize PoseLandmarker:", error);
     }
   },
+  predict: (video) => {
+    // Alias for predictWebcam to match the interface expected by videoFeedUtils
+    return mediaPipe.predictWebcam(video);
+  },
   predictWebcam: async (video) => {
     try {
+      if (!poseLandmarker) {
+        console.log("Pose model not initialized yet, skipping prediction");
+        window.requestAnimationFrame(() => mediaPipe.predictWebcam(video));
+        return;
+      }
+
       if (lastVideoTime !== video.elt.currentTime && poseLandmarker) {
         lastVideoTime = video.elt.currentTime;
         const results = await poseLandmarker.detectForVideo(
@@ -42,6 +54,16 @@ export const mediaPipe = {
         if (results) {
           mediaPipe.landmarks = results.landmarks || [];
           mediaPipe.worldLandmarks = results.worldLandmarks || [];
+
+          // Debug: Log detection results
+          if (results.landmarks && results.landmarks.length > 0) {
+            console.log(
+              "Pose detected! Landmarks count:",
+              results.landmarks[0].length
+            );
+          } else {
+            console.log("No pose detected in frame");
+          }
         }
       }
 

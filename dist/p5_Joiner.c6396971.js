@@ -671,8 +671,10 @@ var parcelHelpers = require("@parcel/transformer-js/src/esmodule-helpers.js");
 var _p5 = require("p5");
 var _p5Default = parcelHelpers.interopDefault(_p5);
 var _handsModel = require("./handsModel");
+var _poseModel = require("./poseModel");
 var _videoFeedUtils = require("./videoFeedUtils");
 var _landmarksHandler = require("./landmarksHandler");
+var _utils = require("./utils");
 new (0, _p5Default.default)((sk)=>{
     let camFeed;
     let snapshots = [];
@@ -683,20 +685,95 @@ new (0, _p5Default.default)((sk)=>{
     let developmentStartTime = null;
     let pendingCapture = null;
     let flash = null;
+    let useHandModel = true;
     const developmentDuration = 750;
-    const minSnapshotSize = 80; // Minimum size of the dimesions in pixels for a valid snapshot
-    const baseCentroidThreshold = 32; // Base threshold for centroid distance (camera distance relation)
-    const referenceHandSize = 128;
+    const minSnapshotSize = 80; // Minimum dimesions in pixels for a valid snapshot
     const snapshotLimit = 20; // Maximum number of snapshots to keep
     const fadeEnabled = true;
-    const fadeStartTime = 120000; // Start fading after
+    const fadeStartTime = 120000;
     const fadeDuration = 10000;
+    const avg = (0, _utils.createAveragePosition)(6);
+    function detectHandGesture(LM) {
+        const baseCentroidThreshold = 32; // Base threshold for centroid distance (camera distance relation)
+        const referenceHandSize = 128;
+        if (LM.X4 !== undefined && LM.X8 !== undefined && LM.X12 !== undefined && LM.X0 !== undefined) {
+            const handSize = sk.dist(LM.X0, LM.Y0, LM.X12, LM.Y12);
+            const dynamicThreshold = handSize / referenceHandSize * baseCentroidThreshold;
+            const centroid = {
+                x: (LM.X4 + LM.X8 + LM.X12) / 3,
+                y: (LM.Y4 + LM.Y8 + LM.Y12) / 3
+            };
+            const dThumbToCentroid = sk.dist(LM.X4, LM.Y4, centroid.x, centroid.y);
+            const dIndexToCentroid = sk.dist(LM.X8, LM.Y8, centroid.x, centroid.y);
+            const dMiddleToCentroid = sk.dist(LM.X12, LM.Y12, centroid.x, centroid.y);
+            if (dThumbToCentroid < dynamicThreshold && dIndexToCentroid < dynamicThreshold && dMiddleToCentroid < dynamicThreshold) return {
+                gesture: "selecting",
+                centroid
+            };
+            return {
+                gesture: "released",
+                centroid
+            };
+        }
+        return {
+            gesture: "released",
+            centroid: null
+        };
+    }
+    function detectPoseGesture(LM) {
+        const poseThreshold = 180;
+        if (LM.X21 !== undefined && LM.X22 !== undefined) {
+            // Average landmarks for stability
+            const X21 = avg("x21", LM.X21);
+            const Y21 = avg("y21", LM.Y21);
+            const X22 = avg("x22", LM.X22);
+            const Y22 = avg("y22", LM.Y22);
+            // Use center point between landmarks 21 and 22 as centroid
+            const centroid = {
+                x: (X21 + X22) / 2,
+                y: (Y21 + Y22) / 2
+            };
+            const distance = sk.dist(X21, Y21, X22, Y22);
+            if (distance < poseThreshold) return {
+                gesture: "selecting",
+                centroid,
+                landmarks: {
+                    X21,
+                    Y21,
+                    X22,
+                    Y22
+                }
+            };
+            return {
+                gesture: "released",
+                centroid,
+                landmarks: {
+                    X21,
+                    Y21,
+                    X22,
+                    Y22
+                }
+            };
+        }
+        return {
+            gesture: "released",
+            centroid: null,
+            landmarks: null
+        };
+    }
     sk.setup = ()=>{
         sk.createCanvas(sk.windowWidth, sk.windowHeight);
         sk.background(0);
         sk.textSize(20);
         sk.textAlign(sk.CENTER, sk.CENTER);
-        camFeed = (0, _videoFeedUtils.initializeCamCapture)(sk, (0, _handsModel.mediaPipe));
+        camFeed = (0, _videoFeedUtils.initializeCamCapture)(sk, useHandModel ? (0, _handsModel.mediaPipe) : (0, _poseModel.mediaPipe));
+        const toggleButton = document.getElementById("modelToggle");
+        toggleButton.addEventListener("click", ()=>{
+            useHandModel = !useHandModel;
+            toggleButton.querySelector(".toggle-text").textContent = useHandModel ? "HAND" : "POSE";
+            // Reinitialize camera with new model
+            camFeed = (0, _videoFeedUtils.initializeCamCapture)(sk, useHandModel ? (0, _handsModel.mediaPipe) : (0, _poseModel.mediaPipe));
+        });
     };
     sk.draw = ()=>{
         sk.background(0);
@@ -706,28 +783,21 @@ new (0, _p5Default.default)((sk)=>{
             return;
         }
         sk.image(camFeed, 0, 0, camFeed.scaledWidth, camFeed.scaledHeight);
-        const landmarksIndex = [
+        const currentModel = useHandModel ? (0, _handsModel.mediaPipe) : (0, _poseModel.mediaPipe);
+        const landmarksIndex = useHandModel ? [
             4,
             8,
             12,
             0
+        ] : [
+            21,
+            22
         ];
-        const LM = (0, _landmarksHandler.getMappedLandmarks)(sk, (0, _handsModel.mediaPipe), camFeed, landmarksIndex);
-        let centroid = null;
-        let gesture = "released";
-        let dynamicThreshold = baseCentroidThreshold;
-        if (LM.X4 !== undefined && LM.X8 !== undefined && LM.X12 !== undefined && LM.X0 !== undefined) {
-            centroid = {
-                x: (LM.X4 + LM.X8 + LM.X12) / 3,
-                y: (LM.Y4 + LM.Y8 + LM.Y12) / 3
-            };
-            const handSize = sk.dist(LM.X0, LM.Y0, LM.X12, LM.Y12);
-            dynamicThreshold = handSize / referenceHandSize * baseCentroidThreshold;
-            const dThumbToCentroid = sk.dist(LM.X4, LM.Y4, centroid.x, centroid.y);
-            const dIndexToCentroid = sk.dist(LM.X8, LM.Y8, centroid.x, centroid.y);
-            const dMiddleToCentroid = sk.dist(LM.X12, LM.Y12, centroid.x, centroid.y);
-            if (dThumbToCentroid < dynamicThreshold && dIndexToCentroid < dynamicThreshold && dMiddleToCentroid < dynamicThreshold) gesture = "selecting";
-        }
+        const LM = (0, _landmarksHandler.getMappedLandmarks)(sk, currentModel, camFeed, landmarksIndex);
+        const gestureResult = useHandModel ? detectHandGesture(LM) : detectPoseGesture(LM);
+        const centroid = gestureResult.centroid;
+        const gesture = gestureResult.gesture;
+        const landmarks = gestureResult.landmarks;
         if (gesture === "selecting" && !isSelecting && !isDeveloping && centroid) {
             isSelecting = true;
             selectionStart = {
@@ -743,7 +813,6 @@ new (0, _p5Default.default)((sk)=>{
             isSelecting = false;
             const w = Math.abs(selectionStart.x - selectionEnd.x);
             const h = Math.abs(selectionStart.y - selectionEnd.y);
-            // Only start development if selection is large enough
             if (w > minSnapshotSize || h > minSnapshotSize) {
                 isDeveloping = true;
                 developmentStartTime = sk.millis();
@@ -769,22 +838,17 @@ new (0, _p5Default.default)((sk)=>{
             if (fadeEnabled) {
                 const elapsed = sk.millis() - startTime;
                 if (elapsed > fadeStartTime) {
-                    // Calculate fade opacity
                     const fadeElapsed = elapsed - fadeStartTime;
                     const opacity = sk.map(fadeElapsed, 0, fadeDuration, 255, 0);
                     if (opacity <= 0) {
-                        // Remove completely faded snapshots
                         snapshots.splice(i, 1);
                         continue;
                     }
-                    // Apply fade
                     sk.tint(255, opacity);
                     sk.image(img, x, y, w, h);
                     sk.noTint();
-                } else // No fade yet
-                sk.image(img, x, y, w, h);
-            } else // No fade, normal display
-            sk.image(img, x, y, w, h);
+                } else sk.image(img, x, y, w, h);
+            } else sk.image(img, x, y, w, h);
         }
         if ((isSelecting || isDeveloping) && selectionStart) {
             sk.push();
@@ -800,7 +864,6 @@ new (0, _p5Default.default)((sk)=>{
                 w: Math.abs(selectionStart.x - selectionEnd.x),
                 h: Math.abs(selectionStart.y - selectionEnd.y)
             };
-            // Yellow for too small, red for good size selection
             if (bounds.w < minSnapshotSize && bounds.h < minSnapshotSize) sk.stroke(255, 255, 0); // Yellow
             else sk.stroke(255, 0, 0); // Red
             sk.rect(bounds.x, bounds.y, bounds.w, bounds.h);
@@ -819,11 +882,10 @@ new (0, _p5Default.default)((sk)=>{
         if (centroid) {
             sk.push();
             if (isSelecting) {
-                // Check if current selection is large enough
                 const currentW = selectionEnd ? Math.abs(selectionStart.x - selectionEnd.x) : 0;
                 const currentH = selectionEnd ? Math.abs(selectionStart.y - selectionEnd.y) : 0;
-                if (currentW < minSnapshotSize && currentH < minSnapshotSize) sk.fill(255, 255, 0); // Yellow for too small
-                else sk.fill(255, 0, 0); // Red for good size
+                if (currentW < minSnapshotSize && currentH < minSnapshotSize) sk.fill(255, 255, 0);
+                else sk.fill(255, 0, 0);
                 sk.noStroke();
             } else {
                 sk.noFill();
@@ -833,15 +895,19 @@ new (0, _p5Default.default)((sk)=>{
             sk.ellipse(centroid.x, centroid.y, 24);
             sk.pop();
         }
-        // if (centroid) {
-        //   sk.push();
-        //   sk.fill(0, 255, 0);
-        //   sk.noStroke();
-        //   sk.ellipse(LM.X4, LM.Y4, 8);
-        //   sk.ellipse(LM.X8, LM.Y8, 8);
-        //   sk.ellipse(LM.X12, LM.Y12, 8);
-        //   sk.pop();
-        // }
+        // Show pose landmarks 21 and 22 for precision
+        if (!useHandModel && landmarks) {
+            sk.push();
+            sk.fill(0, 255, 0); // Green for landmark points
+            sk.noStroke();
+            sk.ellipse(landmarks.X21, landmarks.Y21, 12); // Landmark 21
+            sk.ellipse(landmarks.X22, landmarks.Y22, 12); // Landmark 22
+            // Draw line between landmarks
+            sk.stroke(0, 255, 0);
+            sk.strokeWeight(2);
+            sk.line(landmarks.X21, landmarks.Y21, landmarks.X22, landmarks.Y22);
+            sk.pop();
+        }
         if (isDeveloping && sk.millis() - developmentStartTime >= developmentDuration && pendingCapture) {
             const { x, y, w, h } = pendingCapture;
             const videoX = camFeed.width / camFeed.scaledWidth * x;
@@ -872,7 +938,7 @@ new (0, _p5Default.default)((sk)=>{
     };
 });
 
-},{"p5":"6IEby","./handsModel":"gv1qp","./videoFeedUtils":"KriuE","./landmarksHandler":"gNlhQ","@parcel/transformer-js/src/esmodule-helpers.js":"jnFvT"}],"6IEby":[function(require,module,exports,__globalThis) {
+},{"p5":"6IEby","./handsModel":"gv1qp","./videoFeedUtils":"KriuE","./landmarksHandler":"gNlhQ","@parcel/transformer-js/src/esmodule-helpers.js":"jnFvT","./poseModel":"660ov","./utils":"1X9hu"}],"6IEby":[function(require,module,exports,__globalThis) {
 /*! p5.js v1.11.8 June 05, 2025 */ var global = arguments[3];
 !function(e1) {
     module.exports = e1();
@@ -46847,6 +46913,139 @@ const getMappedLandmarks = (sketch, mediaPipe, camFeed, indices)=>{
     });
     return mappedLandmarks;
 };
+
+},{"@parcel/transformer-js/src/esmodule-helpers.js":"jnFvT"}],"660ov":[function(require,module,exports,__globalThis) {
+var parcelHelpers = require("@parcel/transformer-js/src/esmodule-helpers.js");
+parcelHelpers.defineInteropFlag(exports);
+parcelHelpers.export(exports, "mediaPipe", ()=>mediaPipe);
+var _tasksVision = require("@mediapipe/tasks-vision");
+const MODEL_URL = "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/latest/pose_landmarker_full.task";
+// Use CDN with the exact version we have installed
+const MODEL_URL_WASM = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm";
+const NUM_POSES = 1;
+const RUNNING_MODE = "VIDEO";
+let poseLandmarker;
+let lastVideoTime = -1;
+const mediaPipe = {
+    landmarks: [],
+    worldLandmarks: [],
+    initialize: async ()=>{
+        try {
+            console.log("Initializing pose model...");
+            const vision = await (0, _tasksVision.FilesetResolver).forVisionTasks(MODEL_URL_WASM);
+            poseLandmarker = await (0, _tasksVision.PoseLandmarker).createFromOptions(vision, {
+                baseOptions: {
+                    modelAssetPath: MODEL_URL,
+                    delegate: "GPU"
+                },
+                runningMode: RUNNING_MODE,
+                numPoses: NUM_POSES
+            });
+            console.log("Pose model initialized successfully");
+        } catch (error) {
+            console.error("Failed to initialize PoseLandmarker:", error);
+        }
+    },
+    predict: (video)=>{
+        // Alias for predictWebcam to match the interface expected by videoFeedUtils
+        return mediaPipe.predictWebcam(video);
+    },
+    predictWebcam: async (video)=>{
+        try {
+            if (!poseLandmarker) {
+                console.log("Pose model not initialized yet, skipping prediction");
+                window.requestAnimationFrame(()=>mediaPipe.predictWebcam(video));
+                return;
+            }
+            if (lastVideoTime !== video.elt.currentTime && poseLandmarker) {
+                lastVideoTime = video.elt.currentTime;
+                const results = await poseLandmarker.detectForVideo(video.elt, performance.now());
+                if (results) {
+                    mediaPipe.landmarks = results.landmarks || [];
+                    mediaPipe.worldLandmarks = results.worldLandmarks || [];
+                    // Debug: Log detection results
+                    if (results.landmarks && results.landmarks.length > 0) console.log("Pose detected! Landmarks count:", results.landmarks[0].length);
+                    else console.log("No pose detected in frame");
+                }
+            }
+            window.requestAnimationFrame(()=>mediaPipe.predictWebcam(video));
+        } catch (error) {
+            console.error("Failed to predict webcam:", error);
+        }
+    }
+};
+mediaPipe.initialize();
+
+},{"@mediapipe/tasks-vision":"bu3NE","@parcel/transformer-js/src/esmodule-helpers.js":"jnFvT"}],"1X9hu":[function(require,module,exports,__globalThis) {
+// ---- SINOIDAL PULSE
+// -------------------
+var parcelHelpers = require("@parcel/transformer-js/src/esmodule-helpers.js");
+parcelHelpers.defineInteropFlag(exports);
+parcelHelpers.export(exports, "averageLandmarkPosition", ()=>averageLandmarkPosition);
+parcelHelpers.export(exports, "createSmoother", ()=>createSmoother);
+parcelHelpers.export(exports, "createAveragePosition", ()=>createAveragePosition);
+function pulse(sk, min, max, time) {
+    const mid = (min + max) / 2;
+    const amplitude = (max - min) / 2;
+    return amplitude * sk.sin(sk.frameCount * (sk.TWO_PI / time)) + mid;
+}
+// ---- AVERAGE LANDMARK POSITION FOR SMOOTHING
+// --------------------------------------------
+// Usage on index.js:
+// const avgPos = averageLandmarkPosition(2);
+// const noseX = avgPos("NX", LM.X0);
+// const noseY = avgPos("NY", LM.Y0);
+function averageLandmarkPosition(size) {
+    let queues = {};
+    return (key, value)=>{
+        if (!queues[key]) queues[key] = [];
+        let queue = queues[key];
+        queue.push(value);
+        if (queue.length > size) queue.shift();
+        // Calculate average
+        let sum = queue.reduce((a, b)=>a + b, 0);
+        return sum / queue.length;
+    };
+}
+// ---- SIMPLE SMOOTHING WITHOUT KEYS
+// ----------------------------------
+// Usage: const smoother = createSmoother(3);
+// const smoothedValue = smoother.smooth(rawValue);
+function createSmoother(size = 3) {
+    let queue = [];
+    return {
+        smooth: (value)=>{
+            if (value === undefined || value === null) return value;
+            queue.push(value);
+            if (queue.length > size) queue.shift();
+            // Calculate average
+            let sum = queue.reduce((a, b)=>a + b, 0);
+            return sum / queue.length;
+        },
+        reset: ()=>{
+            queue = [];
+        }
+    };
+}
+// ---- SIMPLE AVERAGE POSITION
+// ----------------------------
+// This function creates a simple average position function that maintains a queue of values for each key.
+// Usage: const avg = createAveragePosition(4);
+// avg(key, value)
+// Example: let X22 = avg("x22", LM.X22);
+function createAveragePosition(size = 3) {
+    let queues = {};
+    return (key, value)=>{
+        if (value === undefined || value === null) return value;
+        if (!queues[key]) queues[key] = [];
+        let queue = queues[key];
+        queue.push(value);
+        if (queue.length > size) queue.shift();
+        // Calculate average
+        let sum = queue.reduce((a, b)=>a + b, 0);
+        return sum / queue.length;
+    };
+}
 
 },{"@parcel/transformer-js/src/esmodule-helpers.js":"jnFvT"}]},["2aZ6o","8JWvp"], "8JWvp", "parcelRequire94c2", {})
 

@@ -22,4 +22,41 @@ canvas {
   top: 0;
   left: 0;
 }
+
+.model-toggle {
+  z-index: 1000;
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+}
+
+.toggle-button {
+  color: #fff;
+  cursor: pointer;
+  backdrop-filter: blur(5px);
+  background: #000c;
+  border: 2px solid #fff;
+  border-radius: 25px;
+  min-width: 80px;
+  padding: 10px 20px;
+  font-size: 16px;
+  font-weight: bold;
+  transition: all .3s;
+}
+
+.toggle-button:hover {
+  color: #ff0;
+  background: #ffffff1a;
+  border-color: #ff0;
+  transform: scale(1.05);
+}
+
+.toggle-button:active {
+  transform: scale(.95);
+}
+
+.toggle-text {
+  transition: all .3s;
+  display: inline-block;
+}
 /*# sourceMappingURL=p5_Joiner.4ee4707b.css.map */

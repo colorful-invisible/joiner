@@ -22,3 +22,40 @@ canvas {
   left: 0;
   z-index: -1;
 }
+
+.model-toggle {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 1000;
+}
+
+.toggle-button {
+  background: rgba(0, 0, 0, 0.8);
+  color: white;
+  border: 2px solid white;
+  border-radius: 25px;
+  padding: 10px 20px;
+  font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  backdrop-filter: blur(5px);
+  min-width: 80px;
+}
+
+.toggle-button:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: #ffff00;
+  color: #ffff00;
+  transform: scale(1.05);
+}
+
+.toggle-button:active {
+  transform: scale(0.95);
+}
+
+.toggle-text {
+  display: inline-block;
+  transition: all 0.3s ease;
+}

@@ -33,4 +33,61 @@ function averageLandmarkPosition(size) {
   };
 }
 
-export { averageLandmarkPosition };
+// ---- SIMPLE SMOOTHING WITHOUT KEYS
+// ----------------------------------
+// Usage: const smoother = createSmoother(3);
+// const smoothedValue = smoother.smooth(rawValue);
+
+function createSmoother(size = 3) {
+  let queue = [];
+
+  return {
+    smooth: (value) => {
+      if (value === undefined || value === null) return value;
+
+      queue.push(value);
+      if (queue.length > size) {
+        queue.shift();
+      }
+
+      // Calculate average
+      let sum = queue.reduce((a, b) => a + b, 0);
+      return sum / queue.length;
+    },
+
+    reset: () => {
+      queue = [];
+    },
+  };
+}
+
+// ---- SIMPLE AVERAGE POSITION
+// ----------------------------
+// This function creates a simple average position function that maintains a queue of values for each key.
+// Usage: const avg = createAveragePosition(4);
+// avg(key, value)
+// Example: let X22 = avg("x22", LM.X22);
+
+function createAveragePosition(size = 3) {
+  let queues = {};
+
+  return (key, value) => {
+    if (value === undefined || value === null) return value;
+
+    if (!queues[key]) {
+      queues[key] = [];
+    }
+
+    let queue = queues[key];
+    queue.push(value);
+    if (queue.length > size) {
+      queue.shift();
+    }
+
+    // Calculate average
+    let sum = queue.reduce((a, b) => a + b, 0);
+    return sum / queue.length;
+  };
+}
+
+export { averageLandmarkPosition, createSmoother, createAveragePosition };
