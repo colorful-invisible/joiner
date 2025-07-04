@@ -683,10 +683,13 @@ new (0, _p5Default.default)((sk)=>{
     let developmentStartTime = null;
     let pendingCapture = null;
     let flash = null;
-    const developmentDuration = 1000;
-    const snapshotLimit = 20;
+    const developmentDuration = 750;
     const centroidThreshold = 48;
-    const minSnapshotSize = 80;
+    const minSnapshotSize = 80; // Minimum size of the dimesions in pixels for a valid snapshot
+    const snapshotLimit = 20; // Maximum number of snapshots to keep
+    const fadeEnabled = false;
+    const fadeStartTime = 120000; // Start fading after
+    const fadeDuration = 10000;
     sk.setup = ()=>{
         sk.createCanvas(sk.windowWidth, sk.windowHeight);
         sk.background(0);
@@ -696,9 +699,9 @@ new (0, _p5Default.default)((sk)=>{
     };
     sk.draw = ()=>{
         sk.background(0);
-        if (!camFeed || camFeed.width <= 0 || camFeed.height <= 0) {
-            sk.fill(255);
-            sk.text("Loading camera...", sk.width / 2, sk.height / 2);
+        if (!camFeed) {
+            sk.fill(0);
+            sk.text("LOADING", sk.width / 2, sk.height / 2);
             return;
         }
         sk.image(camFeed, 0, 0, camFeed.scaledWidth, camFeed.scaledHeight);
@@ -736,7 +739,7 @@ new (0, _p5Default.default)((sk)=>{
             const w = Math.abs(selectionStart.x - selectionEnd.x);
             const h = Math.abs(selectionStart.y - selectionEnd.y);
             // Only start development if selection is large enough
-            if (w > minSnapshotSize && h > minSnapshotSize) {
+            if (w > minSnapshotSize || h > minSnapshotSize) {
                 isDeveloping = true;
                 developmentStartTime = sk.millis();
                 pendingCapture = {
@@ -757,7 +760,25 @@ new (0, _p5Default.default)((sk)=>{
             }
         }
         for(let i = snapshots.length - 1; i >= 0; i--){
-            const { img, x, y, w, h } = snapshots[i];
+            const { img, x, y, w, h, startTime } = snapshots[i];
+            if (fadeEnabled) {
+                const elapsed = sk.millis() - startTime;
+                if (elapsed > fadeStartTime) {
+                    // Calculate fade opacity
+                    const fadeElapsed = elapsed - fadeStartTime;
+                    const opacity = sk.map(fadeElapsed, 0, fadeDuration, 255, 0);
+                    if (opacity <= 0) {
+                        // Remove completely faded snapshots
+                        snapshots.splice(i, 1);
+                        continue;
+                    }
+                    // Apply fade
+                    sk.tint(255, opacity);
+                    sk.image(img, x, y, w, h);
+                    sk.noTint();
+                } else // No fade yet
+                sk.image(img, x, y, w, h);
+            } else // No fade, normal display
             sk.image(img, x, y, w, h);
         }
         if ((isSelecting || isDeveloping) && selectionStart) {
@@ -774,8 +795,8 @@ new (0, _p5Default.default)((sk)=>{
                 w: Math.abs(selectionStart.x - selectionEnd.x),
                 h: Math.abs(selectionStart.y - selectionEnd.y)
             };
-            // Yellow for too small, red for good size
-            if (bounds.w < minSnapshotSize || bounds.h < minSnapshotSize) sk.stroke(255, 255, 0); // Yellow
+            // Yellow for too small, red for good size selection
+            if (bounds.w < minSnapshotSize && bounds.h < minSnapshotSize) sk.stroke(255, 255, 0); // Yellow
             else sk.stroke(255, 0, 0); // Red
             sk.rect(bounds.x, bounds.y, bounds.w, bounds.h);
             sk.drawingContext.setLineDash([]);
@@ -784,7 +805,7 @@ new (0, _p5Default.default)((sk)=>{
         if (flash) {
             const elapsed = sk.millis() - flash.flashStartTime;
             if (elapsed < flash.flashDuration) {
-                const opacity = sk.map(elapsed, 0, flash.flashDuration, 255, 0);
+                const opacity = sk.map(elapsed, 0, flash.flashDuration, 240, 0);
                 sk.fill(255, opacity);
                 sk.noStroke();
                 sk.rect(flash.x, flash.y, flash.w, flash.h);
@@ -796,7 +817,7 @@ new (0, _p5Default.default)((sk)=>{
                 // Check if current selection is large enough
                 const currentW = selectionEnd ? Math.abs(selectionStart.x - selectionEnd.x) : 0;
                 const currentH = selectionEnd ? Math.abs(selectionStart.y - selectionEnd.y) : 0;
-                if (currentW < minSnapshotSize || currentH < minSnapshotSize) sk.fill(255, 255, 0); // Yellow for too small
+                if (currentW < minSnapshotSize && currentH < minSnapshotSize) sk.fill(255, 255, 0); // Yellow for too small
                 else sk.fill(255, 0, 0); // Red for good size
                 sk.noStroke();
             } else {
