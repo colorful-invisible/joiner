@@ -1,7 +1,8 @@
 import p5 from "p5";
 import { mediaPipe as handModel } from "./handsModel";
+import { mediaPipe as poseModel } from "./poseModel";
 import { initializeCamCapture, updateFeedDimensions } from "./videoFeedUtils";
-import { getLandmarks } from "./multiLandmarksHandler";
+import { getMappedLandmarks } from "./landmarksHandler";
 import { createAveragePosition } from "./utils";
 
 new p5((sk) => {
@@ -14,7 +15,7 @@ new p5((sk) => {
   let developmentStartTime = null;
   let pendingCapture = null;
   let flash = null;
-  let useCloseGesture = true; // true = close gesture (3-finger), false = far gesture (2-finger tips)
+  let useHandModel = true;
 
   const developmentDuration = 750;
   const minSnapshotSize = 80; // Minimum dimesions in pixels for a valid snapshot
@@ -25,7 +26,7 @@ new p5((sk) => {
 
   const avg = createAveragePosition(6);
 
-  function detectCloseHandGesture(LM) {
+  function detectHandGesture(LM) {
     const baseCentroidThreshold = 32; // Base threshold for centroid distance (camera distance relation)
     const referenceHandSize = 128;
 
@@ -61,39 +62,36 @@ new p5((sk) => {
     return { gesture: "released", centroid: null };
   }
 
-  function detectFarHandGesture(LM) {
-    const handThreshold = 96; // Fixed threshold for far gesture - selecting when distance is LESS than this
+  function detectPoseGesture(LM) {
+    const poseThreshold = 96;
 
-    // Simple check: if we have both hands' index fingers
-    if (LM.X8_hand0 && LM.X8_hand1) {
+    if (LM.X21 !== undefined && LM.X22 !== undefined) {
       // Average landmarks for stability
-      const X8_1 = avg("x8_hand1", LM.X8_hand0);
-      const Y8_1 = avg("y8_hand1", LM.Y8_hand0);
-      const X8_2 = avg("x8_hand2", LM.X8_hand1);
-      const Y8_2 = avg("y8_hand2", LM.Y8_hand1);
+      const X21 = avg("x21", LM.X21);
+      const Y21 = avg("y21", LM.Y21);
+      const X22 = avg("x22", LM.X22);
+      const Y22 = avg("y22", LM.Y22);
 
-      // Use center point between both index finger tips as centroid
+      // Use center point between landmarks 21 and 22 as centroid
       const centroid = {
-        x: (X8_1 + X8_2) / 2,
-        y: (Y8_1 + Y8_2) / 2,
+        x: (X21 + X22) / 2,
+        y: (Y21 + Y22) / 2,
       };
 
-      const distance = sk.dist(X8_1, Y8_1, X8_2, Y8_2);
+      const distance = sk.dist(X21, Y21, X22, Y22);
 
-      if (distance < handThreshold) {
-        // When finger tips are close together = selecting
+      if (distance < poseThreshold) {
         return {
           gesture: "selecting",
           centroid,
-          landmarks: { X8_1, Y8_1, X8_2, Y8_2 },
+          landmarks: { X21, Y21, X22, Y22 },
         };
       }
 
-      // When finger tips are far apart = released
       return {
         gesture: "released",
         centroid,
-        landmarks: { X8_1, Y8_1, X8_2, Y8_2 },
+        landmarks: { X21, Y21, X22, Y22 },
       };
     }
     return { gesture: "released", centroid: null, landmarks: null };
@@ -104,13 +102,16 @@ new p5((sk) => {
     sk.background(0);
     sk.textSize(20);
     sk.textAlign(sk.CENTER, sk.CENTER);
-    camFeed = initializeCamCapture(sk, handModel);
+    camFeed = initializeCamCapture(sk, useHandModel ? handModel : poseModel);
     const toggleSwitch = document.getElementById("checkboxInput");
     const toggleText = document.getElementById("toggleText");
 
     toggleSwitch.addEventListener("change", () => {
-      useCloseGesture = !toggleSwitch.checked; // Inverted logic: unchecked = CLOSE, checked = FAR
-      toggleText.textContent = useCloseGesture ? "CLOSE" : "FAR";
+      useHandModel = !toggleSwitch.checked; // Inverted logic: unchecked = HAND, checked = POSE
+      toggleText.textContent = useHandModel ? "HAND" : "POSE";
+
+      // Reinitialize camera with new model
+      camFeed = initializeCamCapture(sk, useHandModel ? handModel : poseModel);
     });
   };
 
@@ -125,20 +126,14 @@ new p5((sk) => {
 
     sk.image(camFeed, 0, 0, camFeed.scaledWidth, camFeed.scaledHeight);
 
-    let LM, gestureResult;
+    const currentModel = useHandModel ? handModel : poseModel;
+    const landmarksIndex = useHandModel ? [4, 8, 12, 0] : [21, 22];
 
-    if (useCloseGesture) {
-      // Close gesture: use universal handler for single hand
-      const landmarksIndex = [4, 8, 12, 0];
-      LM = getLandmarks(sk, handModel, camFeed, landmarksIndex, 1);
-      gestureResult = detectCloseHandGesture(LM);
-    } else {
-      // Far gesture: use universal handler for multiple hands
-      const landmarksIndex = [8];
-      LM = getLandmarks(sk, handModel, camFeed, landmarksIndex, 2);
-      gestureResult = detectFarHandGesture(LM);
-    }
+    const LM = getMappedLandmarks(sk, currentModel, camFeed, landmarksIndex);
 
+    const gestureResult = useHandModel
+      ? detectHandGesture(LM)
+      : detectPoseGesture(LM);
     const centroid = gestureResult.centroid;
     const gesture = gestureResult.gesture;
     const landmarks = gestureResult.landmarks;
@@ -261,18 +256,18 @@ new p5((sk) => {
       sk.pop();
     }
 
-    // Show hand landmarks for far gesture precision (both hands' index finger tips)
-    if (!useCloseGesture && landmarks) {
+    // Show pose landmarks 21 and 22 for precision
+    if (!useHandModel && landmarks) {
       sk.push();
       sk.fill(0, 255, 0); // Green for landmark points
       sk.noStroke();
-      sk.ellipse(landmarks.X8_1, landmarks.Y8_1, 12); // Hand 1 index finger tip
-      sk.ellipse(landmarks.X8_2, landmarks.Y8_2, 12); // Hand 2 index finger tip
+      sk.ellipse(landmarks.X21, landmarks.Y21, 12); // Landmark 21
+      sk.ellipse(landmarks.X22, landmarks.Y22, 12); // Landmark 22
 
       // Draw line between landmarks
       sk.stroke(0, 255, 0);
       sk.strokeWeight(2);
-      sk.line(landmarks.X8_1, landmarks.Y8_1, landmarks.X8_2, landmarks.Y8_2);
+      sk.line(landmarks.X21, landmarks.Y21, landmarks.X22, landmarks.Y22);
       sk.pop();
     }
 

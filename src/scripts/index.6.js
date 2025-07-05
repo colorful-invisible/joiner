@@ -1,7 +1,8 @@
 import p5 from "p5";
 import { mediaPipe as handModel } from "./handsModel";
 import { initializeCamCapture, updateFeedDimensions } from "./videoFeedUtils";
-import { getLandmarks } from "./multiLandmarksHandler";
+import { getMappedLandmarks } from "./landmarksHandler";
+import { getMultiHandLandmarks } from "./multiHandLandmarksHandler";
 import { createAveragePosition } from "./utils";
 
 new p5((sk) => {
@@ -128,14 +129,14 @@ new p5((sk) => {
     let LM, gestureResult;
 
     if (useCloseGesture) {
-      // Close gesture: use universal handler for single hand
+      // Close gesture: use original handler for single hand
       const landmarksIndex = [4, 8, 12, 0];
-      LM = getLandmarks(sk, handModel, camFeed, landmarksIndex, 1);
+      LM = getMappedLandmarks(sk, handModel, camFeed, landmarksIndex);
       gestureResult = detectCloseHandGesture(LM);
     } else {
-      // Far gesture: use universal handler for multiple hands
+      // Far gesture: use multi-hand handler for both hands
       const landmarksIndex = [8];
-      LM = getLandmarks(sk, handModel, camFeed, landmarksIndex, 2);
+      LM = getMultiHandLandmarks(sk, handModel, camFeed, landmarksIndex);
       gestureResult = detectFarHandGesture(LM);
     }
 
