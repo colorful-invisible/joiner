@@ -5,7 +5,7 @@
 }
 
 html {
-  font-size: 24px;
+  font-size: 20px;
 }
 
 main {
@@ -25,12 +25,18 @@ canvas {
 
 .model-toggle {
   position: fixed;
-  bottom: 20px;
-  right: 20px;
+  bottom: 1.125rem;
+  right: 1.125rem;
   z-index: 1000;
   display: flex;
   align-items: center;
-  gap: 15px;
+  gap: 1rem;
+  opacity: 0.05;
+}
+
+.model-toggle:hover {
+  opacity: 1;
+  transition: opacity 0.3s ease-in-out;
 }
 
 .toggle-text {
