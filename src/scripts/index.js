@@ -5,8 +5,21 @@ import { getLandmarks } from "./multiLandmarksHandler";
 import { createAveragePosition } from "./utils";
 
 new p5((sk) => {
+  const FRAME_THRESHOLD = 8;
+  const developmentDuration = 750;
+  const minSnapshotSize = 80;
+  const snapshotLimit = 20;
+  const fadeEnabled = true;
+  const fadeStartTime = 120000;
+  const fadeDuration = 10000;
+
   let camFeed;
   let snapshots = [];
+  let useCloseGesture = true;
+  let selectingFrameCount = 0;
+  let releasedFrameCount = 0;
+  let confirmedGesture = "released";
+  let lastCentroid = null;
   let isSelecting = false;
   let selectionStart = null;
   let selectionEnd = null;
@@ -14,26 +27,11 @@ new p5((sk) => {
   let developmentStartTime = null;
   let pendingCapture = null;
   let flash = null;
-  let useCloseGesture = true; // true = close gesture (3-finger), false = far gesture (2-finger tips)
-
-  // Frame-based debouncing variables
-  let selectingFrameCount = 0;
-  let releasedFrameCount = 0;
-  let confirmedGesture = "released";
-  let lastCentroid = null;
-  const FRAME_THRESHOLD = 4; // Require 3 consistent frames before state change
-
-  const developmentDuration = 750;
-  const minSnapshotSize = 80; // Minimum dimesions in pixels for a valid snapshot
-  const snapshotLimit = 20; // Maximum number of snapshots to keep
-  const fadeEnabled = true;
-  const fadeStartTime = 120000;
-  const fadeDuration = 10000;
 
   const avg = createAveragePosition(6);
 
   function detectCloseHandGesture(LM) {
-    const baseCentroidThreshold = 24; // Base threshold for centroid distance (camera distance relation)
+    const baseCentroidThreshold = 24;
     const referenceHandSize = 128;
 
     if (
@@ -55,30 +53,17 @@ new p5((sk) => {
       const dIndexToCentroid = sk.dist(LM.X8, LM.Y8, centroid.x, centroid.y);
       const dMiddleToCentroid = sk.dist(LM.X12, LM.Y12, centroid.x, centroid.y);
 
-      const debugInfo = {
-        handSize: handSize.toFixed(1),
-        dynamicThreshold: dynamicThreshold.toFixed(1),
-        dThumb: dThumbToCentroid.toFixed(1),
-        dIndex: dIndexToCentroid.toFixed(1),
-        dMiddle: dMiddleToCentroid.toFixed(1),
-        maxDistance: Math.max(
-          dThumbToCentroid,
-          dIndexToCentroid,
-          dMiddleToCentroid
-        ).toFixed(1),
-      };
-
       if (
         dThumbToCentroid < dynamicThreshold &&
         dIndexToCentroid < dynamicThreshold &&
         dMiddleToCentroid < dynamicThreshold
       ) {
-        return { gesture: "selecting", centroid, debugInfo };
+        return { gesture: "selecting", centroid };
       }
 
-      return { gesture: "released", centroid, debugInfo };
+      return { gesture: "released", centroid };
     }
-    return { gesture: "released", centroid: null, debugInfo: null };
+    return { gesture: "released", centroid: null };
   }
 
   function detectFarHandGesture(LM) {
@@ -119,11 +104,11 @@ new p5((sk) => {
     sk.textSize(20);
     sk.textAlign(sk.CENTER, sk.CENTER);
     camFeed = initializeCamCapture(sk, handModel);
+
     const toggleSwitch = document.getElementById("checkboxInput");
     const toggleText = document.getElementById("toggleText");
-
     toggleSwitch.addEventListener("change", () => {
-      useCloseGesture = !toggleSwitch.checked; // Inverted logic: unchecked = CLOSE, checked = FAR
+      useCloseGesture = !toggleSwitch.checked;
       toggleText.textContent = useCloseGesture ? "CLOSE" : "FAR";
     });
   };
@@ -140,14 +125,11 @@ new p5((sk) => {
     sk.image(camFeed, 0, 0, camFeed.scaledWidth, camFeed.scaledHeight);
 
     let LM, gestureResult;
-
     if (useCloseGesture) {
-      // Close gesture: use universal handler for single hand
       const landmarksIndex = [4, 8, 12, 0];
       LM = getLandmarks(sk, handModel, camFeed, landmarksIndex, 1);
       gestureResult = detectCloseHandGesture(LM);
     } else {
-      // Far gesture: use universal handler for multiple hands
       const landmarksIndex = [8];
       LM = getLandmarks(sk, handModel, camFeed, landmarksIndex, 2);
       gestureResult = detectFarHandGesture(LM);
@@ -156,24 +138,16 @@ new p5((sk) => {
     const centroid = gestureResult.centroid;
     const gesture = gestureResult.gesture;
     const landmarks = gestureResult.landmarks;
-    const debugInfo = gestureResult.debugInfo; // Extract debug info
 
-    // Frame-based debouncing for gesture stability
+    // Frame-based debouncing
     if (gesture === "selecting" && centroid) {
       selectingFrameCount++;
       releasedFrameCount = 0;
-      lastCentroid = centroid; // Store the latest valid centroid
+      lastCentroid = centroid;
     } else if (gesture === "released") {
       releasedFrameCount++;
       selectingFrameCount = 0;
-      // Keep last known centroid for a few frames to avoid jumpy behavior
-      if (releasedFrameCount <= FRAME_THRESHOLD && lastCentroid) {
-        // Use last known centroid for visual feedback during release debouncing
-      }
     } else {
-      // Handle case where gesture detection fails (no landmarks)
-      // Don't immediately reset - this is likely a tracking glitch
-      // Only reset if we've had several bad frames in a row
       if (selectingFrameCount > 0) {
         selectingFrameCount = Math.max(0, selectingFrameCount - 1);
       }
@@ -182,15 +156,12 @@ new p5((sk) => {
       }
     }
 
-    // Only change confirmed gesture state after threshold
     if (selectingFrameCount >= FRAME_THRESHOLD) {
       confirmedGesture = "selecting";
     } else if (releasedFrameCount >= FRAME_THRESHOLD) {
       confirmedGesture = "released";
     }
-    // Otherwise keep the previous confirmed gesture state
 
-    // Use confirmed gesture and appropriate centroid for logic
     const finalCentroid =
       confirmedGesture === "selecting"
         ? lastCentroid
@@ -198,7 +169,6 @@ new p5((sk) => {
         ? lastCentroid
         : null;
 
-    // Always show a centroid circle if we have any valid detection (raw or debounced)
     const displayCentroid = centroid || lastCentroid;
 
     if (
@@ -236,7 +206,6 @@ new p5((sk) => {
           flashStartTime: sk.millis(),
         };
       } else {
-        // Reset immediately for small selections
         selectionStart = null;
         selectionEnd = null;
       }
@@ -281,9 +250,9 @@ new p5((sk) => {
       };
 
       if (bounds.w < minSnapshotSize && bounds.h < minSnapshotSize) {
-        sk.stroke(255, 255, 0); // Yellow
+        sk.stroke(255, 255, 0);
       } else {
-        sk.stroke(255, 0, 0); // Red
+        sk.stroke(255, 0, 0);
       }
 
       sk.rect(bounds.x, bounds.y, bounds.w, bounds.h);
@@ -328,19 +297,58 @@ new p5((sk) => {
       sk.pop();
     }
 
-    // Show hand landmarks for far gesture precision (both hands' index finger tips)
-    // Use raw landmarks from gesture result, not the debounced version
     if (!useCloseGesture && landmarks) {
       sk.push();
-      sk.fill(0, 255, 0); // Green for landmark points
-      sk.noStroke();
-      sk.ellipse(landmarks.X8_1, landmarks.Y8_1, 12); // Hand 1 index finger tip
-      sk.ellipse(landmarks.X8_2, landmarks.Y8_2, 12); // Hand 2 index finger tip
 
-      // Draw line between landmarks
-      sk.stroke(0, 255, 0);
-      sk.strokeWeight(2);
-      sk.line(landmarks.X8_1, landmarks.Y8_1, landmarks.X8_2, landmarks.Y8_2);
+      // Draw line first, but stop before centroid
+      if (displayCentroid) {
+        const centroidRadius = 12; // Half of the centroid circle diameter (24)
+        const dx = landmarks.X8_2 - landmarks.X8_1;
+        const dy = landmarks.Y8_2 - landmarks.Y8_1;
+        const lineLength = Math.sqrt(dx * dx + dy * dy);
+
+        // Calculate unit vector along the line
+        const unitX = dx / lineLength;
+        const unitY = dy / lineLength;
+
+        // Calculate distances from each finger to centroid
+        const dist1 = sk.dist(
+          landmarks.X8_1,
+          landmarks.Y8_1,
+          displayCentroid.x,
+          displayCentroid.y
+        );
+        const dist2 = sk.dist(
+          landmarks.X8_2,
+          landmarks.Y8_2,
+          displayCentroid.x,
+          displayCentroid.y
+        );
+
+        // Calculate new endpoints that stop before the centroid
+        const stopDistance = centroidRadius; // 4 pixels gap
+        const newX1 = landmarks.X8_1 + unitX * (dist1 - stopDistance);
+        const newY1 = landmarks.Y8_1 + unitY * (dist1 - stopDistance);
+        const newX2 = landmarks.X8_2 - unitX * (dist2 - stopDistance);
+        const newY2 = landmarks.Y8_2 - unitY * (dist2 - stopDistance);
+
+        sk.stroke(255);
+        sk.strokeWeight(2);
+        sk.line(landmarks.X8_1, landmarks.Y8_1, newX1, newY1);
+        sk.line(newX2, newY2, landmarks.X8_2, landmarks.Y8_2);
+      } else {
+        // If no centroid, draw full line
+        sk.stroke(255);
+        sk.strokeWeight(2);
+        sk.line(landmarks.X8_1, landmarks.Y8_1, landmarks.X8_2, landmarks.Y8_2);
+      }
+
+      // Draw finger tip circles
+      sk.fill(255);
+      sk.noStroke();
+      sk.ellipse(landmarks.X8_1, landmarks.Y8_1, 12);
+      sk.ellipse(landmarks.X8_2, landmarks.Y8_2, 12);
+
       sk.pop();
     }
 
@@ -377,39 +385,6 @@ new p5((sk) => {
       pendingCapture = null;
       selectionStart = null;
       selectionEnd = null;
-    }
-
-    // Debug display for close hand gesture
-    if (useCloseGesture && debugInfo) {
-      sk.push();
-      sk.fill(255, 255, 255, 200);
-      sk.stroke(0);
-      sk.strokeWeight(1);
-      sk.rect(10, 10, 300, 140);
-
-      sk.fill(0);
-      sk.noStroke();
-      sk.textAlign(sk.LEFT, sk.TOP);
-      sk.textSize(12);
-
-      let yPos = 25;
-      sk.text(`Hand Size: ${debugInfo.handSize}`, 20, yPos);
-      yPos += 15;
-      sk.text(`Dynamic Threshold: ${debugInfo.dynamicThreshold}`, 20, yPos);
-      yPos += 15;
-      sk.text(`Thumb Distance: ${debugInfo.dThumb}`, 20, yPos);
-      yPos += 15;
-      sk.text(`Index Distance: ${debugInfo.dIndex}`, 20, yPos);
-      yPos += 15;
-      sk.text(`Middle Distance: ${debugInfo.dMiddle}`, 20, yPos);
-      yPos += 15;
-      sk.text(`Max Distance: ${debugInfo.maxDistance}`, 20, yPos);
-      yPos += 15;
-      sk.text(`Gesture: ${gesture}`, 20, yPos);
-      yPos += 15;
-      sk.text(`Confirmed: ${confirmedGesture}`, 20, yPos);
-
-      sk.pop();
     }
   };
 
