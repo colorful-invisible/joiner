@@ -5,9 +5,9 @@ import { getLandmarks } from "./multiLandmarksHandler";
 import { createAveragePosition } from "./utils";
 
 new p5((sk) => {
-  const FRAME_THRESHOLD = 8; // Number of frames to confirm gesture
-  const developmentDuration = 750; // Duration to develop a snapshot
-  const minSnapshotSize = 80; // Minimum dimension in pixels for to consider a snapshot valid
+  const FRAME_THRESHOLD = 8;
+  const developmentDuration = 750;
+  const minSnapshotSize = 80;
   const snapshotLimit = 20;
   const fadeEnabled = true;
   const fadeStartTime = 120000;
