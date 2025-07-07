@@ -11,9 +11,7 @@ export function initializeCamCapture(sk, gesturePipe) {
       },
     },
     (stream) => {
-      // Just update dimensions once, no waiting loop
       updateFeedDimensions(sk, camFeed, false);
-      // Start gesture prediction immediately
       gesturePipe.predictWebcam(camFeed);
     }
   );
