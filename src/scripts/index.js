@@ -2,7 +2,7 @@ import p5 from "p5";
 import { mediaPipe as handModel } from "./handsModel";
 import { initializeCamCapture, updateFeedDimensions } from "./videoFeedUtils";
 import { getLandmarks } from "./multiLandmarksHandler";
-import { createAveragePosition } from "./utils";
+import { createAveragePosition, createTitleScreen } from "./utils";
 
 new p5((sk) => {
   const FRAME_THRESHOLD = 12; // Number of frames to confirm gesture
@@ -29,6 +29,7 @@ new p5((sk) => {
   let flash = null;
 
   const avg = createAveragePosition(6);
+  const titleScreen = createTitleScreen("CHRONOTOPE", 2000, 1000);
 
   function detectCloseHandGesture(LM) {
     const baseCentroidThreshold = 24;
@@ -116,22 +117,38 @@ new p5((sk) => {
   sk.draw = () => {
     sk.background(0);
 
-    if (!camFeed) {
-      sk.fill(0);
-      sk.text("LOADING", sk.width / 2, sk.height / 2);
-      return;
+    // Check if both camera feed and landmarks are ready
+    let landmarksReady = false;
+    let LM, gestureResult;
+
+    if (camFeed) {
+      // Test if landmarks can be detected
+      if (useCloseGesture) {
+        const landmarksIndex = [4, 8, 12, 0];
+        LM = getLandmarks(sk, handModel, camFeed, landmarksIndex, 1);
+        landmarksReady =
+          handModel && (LM.X4 !== undefined || LM.X8 !== undefined);
+      } else {
+        const landmarksIndex = [8];
+        LM = getLandmarks(sk, handModel, camFeed, landmarksIndex, 2);
+        landmarksReady =
+          handModel && (LM.X8_hand0 !== undefined || LM.X8_hand1 !== undefined);
+      }
     }
 
+    const experienceReady = titleScreen.update(sk, camFeed && landmarksReady);
+
+    if (!experienceReady) {
+      return; // Stay on title screen
+    }
+
+    // At this point, we know the title screen is complete and everything is ready
     sk.image(camFeed, 0, 0, camFeed.scaledWidth, camFeed.scaledHeight);
 
-    let LM, gestureResult;
+    // Get gesture results (we already have LM from the readiness check)
     if (useCloseGesture) {
-      const landmarksIndex = [4, 8, 12, 0];
-      LM = getLandmarks(sk, handModel, camFeed, landmarksIndex, 1);
       gestureResult = detectCloseHandGesture(LM);
     } else {
-      const landmarksIndex = [8];
-      LM = getLandmarks(sk, handModel, camFeed, landmarksIndex, 2);
       gestureResult = detectFarHandGesture(LM);
     }
 
