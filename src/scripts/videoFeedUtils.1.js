@@ -1,8 +1,6 @@
 // Version 2.1 - 03.07.2025 - Gesture Recognizer
 export function initializeCamCapture(sk, gesturePipe) {
-  const startGesturePrediction = () => {
-    if (gesturePipe?.isInitialized) gesturePipe.predictWebcam(camFeed);
-  };
+  console.log("Initializing camera capture...");
 
   const camFeed = sk.createCapture(
     {
@@ -14,22 +12,36 @@ export function initializeCamCapture(sk, gesturePipe) {
         frameRate: { ideal: 30, min: 15 },
       },
     },
-    () => {
+    (stream) => {
+      console.log("Camera stream started successfully");
       updateFeedDimensions(sk, camFeed, false);
-      startGesturePrediction();
+      if (gesturePipe && gesturePipe.isInitialized) {
+        gesturePipe.predictWebcam(camFeed);
+      }
     }
   );
 
-  // Event listeners
-  camFeed.elt.addEventListener("loadeddata", () =>
+  // Add error handling
+  camFeed.elt.addEventListener("loadeddata", () => {
     console.log(
-      `Camera loaded: ${camFeed.elt.videoWidth}x${camFeed.elt.videoHeight}`
-    )
-  );
-  camFeed.elt.addEventListener("error", (e) =>
-    console.error("Camera error:", e)
-  );
-  camFeed.elt.addEventListener("canplay", startGesturePrediction);
+      "Camera data loaded, dimensions:",
+      camFeed.elt.videoWidth,
+      "x",
+      camFeed.elt.videoHeight
+    );
+  });
+
+  camFeed.elt.addEventListener("error", (e) => {
+    console.error("Camera error:", e);
+  });
+
+  camFeed.elt.addEventListener("canplay", () => {
+    console.log("Camera ready to play");
+    // Start MediaPipe prediction once camera is ready
+    if (gesturePipe && gesturePipe.isInitialized) {
+      gesturePipe.predictWebcam(camFeed);
+    }
+  });
 
   camFeed.elt.setAttribute("playsinline", "");
   camFeed.hide();
@@ -41,10 +53,11 @@ export function updateFeedDimensions(sk, feed, fitToHeight = false) {
 
   const canvasRatio = sk.width / sk.height;
   const videoRatio = feed.width / feed.height;
-  let x = 0,
-    y = 0,
-    w = sk.width,
-    h = sk.height;
+
+  let x = 0;
+  let y = 0;
+  let w = sk.width;
+  let h = sk.height;
 
   if (canvasRatio > videoRatio) {
     if (fitToHeight) {
@@ -59,5 +72,8 @@ export function updateFeedDimensions(sk, feed, fitToHeight = false) {
     x = (sk.width - w) / 2;
   }
 
-  Object.assign(feed, { scaledWidth: w, scaledHeight: h, x, y });
+  feed.scaledWidth = w;
+  feed.scaledHeight = h;
+  feed.x = x;
+  feed.y = y;
 }
