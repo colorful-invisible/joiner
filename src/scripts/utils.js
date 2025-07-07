@@ -103,17 +103,6 @@ function createTitleScreen(
         sk.textSize(48);
         sk.text(title, sk.width / 2, sk.height / 2);
 
-        // Show loading status during waiting phase
-        if (phase === "waiting") {
-          sk.textSize(16);
-          sk.fill(150);
-          sk.text(
-            "Loading camera and hand detection...",
-            sk.width / 2,
-            sk.height / 2 + 60
-          );
-        }
-
         sk.pop();
       } else if (phase === "fading") {
         const fadeProgress = elapsed / fadeDuration;
