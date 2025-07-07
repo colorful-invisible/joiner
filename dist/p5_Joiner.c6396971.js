@@ -675,9 +675,9 @@ var _videoFeedUtils = require("./videoFeedUtils");
 var _multiLandmarksHandler = require("./multiLandmarksHandler");
 var _utils = require("./utils");
 new (0, _p5Default.default)((sk)=>{
-    const FRAME_THRESHOLD = 8;
-    const developmentDuration = 750;
-    const minSnapshotSize = 80;
+    const FRAME_THRESHOLD = 12; // Number of frames to confirm gesture
+    const developmentDuration = 750; // Duration to develop a snapshot
+    const minSnapshotSize = 80; // Minimum dimension in pixels for to consider a snapshot valid
     const snapshotLimit = 20;
     const fadeEnabled = true;
     const fadeStartTime = 120000;
@@ -33586,17 +33586,16 @@ const mediaPipe = {
                     delegate: "GPU"
                 },
                 runningMode: RUNNING_MODE,
-                numHands: NUM_HANDS
+                numHands: NUM_HANDS,
+                minHandDetectionConfidence: 0.3,
+                minHandPresenceConfidence: 0.2,
+                minTrackingConfidence: 0.3
             });
             mediaPipe.isInitialized = true;
             console.log("MediaPipe HandLandmarker initialized successfully");
         } catch (error) {
             console.error("Failed to initialize HandLandmarker:", error);
         }
-    },
-    predict: (video)=>{
-        // Alias for predictWebcam to match the interface expected by videoFeedUtils
-        return mediaPipe.predictWebcam(video);
     },
     predictWebcam: async (video)=>{
         try {
@@ -46910,7 +46909,7 @@ function initializeCamCapture(sk, gesturePipe) {
         // Just update dimensions once, no waiting loop
         updateFeedDimensions(sk, camFeed, false);
         // Start gesture prediction immediately
-        gesturePipe.predict(camFeed);
+        gesturePipe.predictWebcam(camFeed);
     });
     camFeed.elt.setAttribute("playsinline", "");
     camFeed.hide();

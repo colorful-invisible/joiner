@@ -27,16 +27,15 @@ export const mediaPipe = {
         },
         runningMode: RUNNING_MODE,
         numHands: NUM_HANDS,
+        minHandDetectionConfidence: 0.3, // Lower = more sensitive detection
+        minHandPresenceConfidence: 0.2, // Lower = keeps tracking longer
+        minTrackingConfidence: 0.3, // Lower = more tolerant of uncertain positions
       });
       mediaPipe.isInitialized = true;
       console.log("MediaPipe HandLandmarker initialized successfully");
     } catch (error) {
       console.error("Failed to initialize HandLandmarker:", error);
     }
-  },
-  predict: (video) => {
-    // Alias for predictWebcam to match the interface expected by videoFeedUtils
-    return mediaPipe.predictWebcam(video);
   },
   predictWebcam: async (video) => {
     try {
