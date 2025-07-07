@@ -14,6 +14,11 @@ new p5((sk) => {
     fadeDuration = 10000,
     fadeEnabled = true;
 
+  // Undo area configuration
+  const undoAreaSize = 80; // Size of the undo area in pixels
+  let undoTriggered = false,
+    undoFrameCount = 0;
+
   // State variables
   let camFeed,
     snapshots = [],
@@ -112,7 +117,7 @@ new p5((sk) => {
     const toggleText = document.getElementById("toggleText");
     toggleSwitch.addEventListener("change", () => {
       useCloseGesture = !toggleSwitch.checked;
-      toggleText.textContent = useCloseGesture ? "CLOSE" : "FAR";
+      toggleText.textContent = useCloseGesture ? "NEAR" : "FAR";
     });
   };
 
@@ -175,6 +180,76 @@ new p5((sk) => {
     }
   }
 
+  // Helper function to check if landmarks are in undo area (left bottom corner)
+  function checkUndoArea(landmarks) {
+    if (!landmarks) return false;
+
+    const undoArea = {
+      x: 0,
+      y: sk.height - undoAreaSize,
+      width: undoAreaSize,
+      height: undoAreaSize,
+    };
+
+    // Helper function to check if a point is in the undo area
+    const isInUndoArea = (x, y) => {
+      return (
+        x >= undoArea.x &&
+        x <= undoArea.x + undoArea.width &&
+        y >= undoArea.y &&
+        y <= undoArea.y + undoArea.height
+      );
+    };
+
+    // Check for close gesture landmarks (thumb, index, middle finger)
+    if (useCloseGesture) {
+      return (
+        (landmarks.X4 !== undefined &&
+          landmarks.Y4 !== undefined &&
+          isInUndoArea(landmarks.X4, landmarks.Y4)) ||
+        (landmarks.X8 !== undefined &&
+          landmarks.Y8 !== undefined &&
+          isInUndoArea(landmarks.X8, landmarks.Y8)) ||
+        (landmarks.X12 !== undefined &&
+          landmarks.Y12 !== undefined &&
+          isInUndoArea(landmarks.X12, landmarks.Y12))
+      );
+    } else {
+      // Check for far gesture landmarks (both index fingers)
+      return (
+        (landmarks.X8_hand0 !== undefined &&
+          landmarks.Y8_hand0 !== undefined &&
+          isInUndoArea(landmarks.X8_hand0, landmarks.Y8_hand0)) ||
+        (landmarks.X8_hand1 !== undefined &&
+          landmarks.Y8_hand1 !== undefined &&
+          isInUndoArea(landmarks.X8_hand1, landmarks.Y8_hand1))
+      );
+    }
+  }
+
+  // Helper function to perform undo operation
+  function performUndo() {
+    if (snapshots.length > 0) {
+      snapshots.pop();
+    }
+  }
+
+  // Helper function to draw undo area indicator
+  function drawUndoArea() {
+    sk.push();
+    sk.fill(255, 255, 255, 30); // Semi-transparent white
+    sk.stroke(255, 255, 255, 100);
+    sk.strokeWeight(2);
+    sk.rect(0, sk.height - undoAreaSize, undoAreaSize, undoAreaSize);
+
+    // Draw "UNDO" text
+    sk.fill(255, 150);
+    sk.textAlign(sk.CENTER, sk.CENTER);
+    sk.textSize(12);
+    sk.text("UNDO", undoAreaSize / 2, sk.height - undoAreaSize / 2);
+    sk.pop();
+  }
+
   sk.draw = () => {
     sk.background(0);
     const ready = isExperienceReady();
@@ -196,6 +271,20 @@ new p5((sk) => {
     const centroid = gestureResult.centroid;
     const gesture = gestureResult.gesture;
     const landmarks = gestureResult.landmarks;
+
+    // Check for undo gesture
+    const inUndoArea = checkUndoArea(LM);
+    if (inUndoArea && !undoTriggered) {
+      undoFrameCount++;
+      if (undoFrameCount >= FRAME_THRESHOLD) {
+        performUndo();
+        undoTriggered = true;
+        undoFrameCount = 0;
+      }
+    } else if (!inUndoArea) {
+      undoTriggered = false;
+      undoFrameCount = 0;
+    }
 
     if (gesture === "selecting" && centroid) {
       selectingFrameCount++;
@@ -301,6 +390,28 @@ new p5((sk) => {
       sk.pop();
     }
 
+    // Draw individual landmarks for close gesture mode
+    if (useCloseGesture && LM) {
+      sk.push();
+      sk.fill(255);
+      sk.noStroke();
+
+      // Draw finger landmarks
+      const landmarks = [
+        { x: LM.X4, y: LM.Y4 }, // Thumb
+        { x: LM.X8, y: LM.Y8 }, // Index
+        { x: LM.X12, y: LM.Y12 }, // Middle
+      ];
+
+      landmarks.forEach(({ x, y }) => {
+        if (x !== undefined && y !== undefined) {
+          sk.ellipse(x, y, 12);
+        }
+      });
+
+      sk.pop();
+    }
+
     if (!useCloseGesture && landmarks) {
       sk.push();
       if (displayCentroid) {
@@ -370,6 +481,9 @@ new p5((sk) => {
       selectionStart = null;
       selectionEnd = null;
     }
+
+    // Draw undo area
+    drawUndoArea();
   };
 
   sk.windowResized = () => {
