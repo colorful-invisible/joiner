@@ -396,11 +396,19 @@ new p5((sk) => {
       sk.fill(255);
       sk.noStroke();
 
-      // Draw finger landmarks
+      // Apply averaging to reduce jitter
+      const X4 = avg("x4_close", LM.X4);
+      const Y4 = avg("y4_close", LM.Y4);
+      const X8 = avg("x8_close", LM.X8);
+      const Y8 = avg("y8_close", LM.Y8);
+      const X12 = avg("x12_close", LM.X12);
+      const Y12 = avg("y12_close", LM.Y12);
+
+      // Draw finger landmarks with smoothing
       const landmarks = [
-        { x: LM.X4, y: LM.Y4 }, // Thumb
-        { x: LM.X8, y: LM.Y8 }, // Index
-        { x: LM.X12, y: LM.Y12 }, // Middle
+        { x: X4, y: Y4 }, // Thumb
+        { x: X8, y: Y8 }, // Index
+        { x: X12, y: Y12 }, // Middle
       ];
 
       landmarks.forEach(({ x, y }) => {
