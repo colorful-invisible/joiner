@@ -1,3 +1,4 @@
+
 import p5 from "p5";
 import { mediaPipe as handModel } from "./handsModel";
 import { initializeCamCapture, updateFeedDimensions } from "./videoFeedUtils";
@@ -5,29 +6,17 @@ import { getLandmarks } from "./multiLandmarksHandler";
 import { createAveragePosition, createTitleScreen } from "./utils";
 
 new p5((sk) => {
-  const FRAME_THRESHOLD = 12; // Number of frames to confirm gesture
-  const developmentDuration = 750; // Duration to develop a snapshot
-  const minSnapshotSize = 80; // Minimum dimension in pixels for to consider a snapshot valid
+  const FRAME_THRESHOLD = 12;
+  const developmentDuration = 750;
+  const minSnapshotSize = 80;
   const snapshotLimit = 20;
-  const fadeEnabled = true;
   const fadeStartTime = 120000;
   const fadeDuration = 10000;
 
-  let camFeed;
-  let snapshots = [];
-  let useCloseGesture = true;
-  let selectingFrameCount = 0;
-  let releasedFrameCount = 0;
-  let confirmedGesture = "released";
-  let lastCentroid = null;
-  let isSelecting = false;
-  let selectionStart = null;
-  let selectionEnd = null;
-  let isDeveloping = false;
-  let developmentStartTime = null;
-  let pendingCapture = null;
-  let flash = null;
-
+  let camFeed, snapshots = [], useCloseGesture = true;
+  let selectingFrameCount = 0, releasedFrameCount = 0, confirmedGesture = "released";
+  let lastCentroid = null, isSelecting = false, selectionStart = null, selectionEnd = null;
+  let isDeveloping = false, developmentStartTime = null, pendingCapture = null, flash = null;
   const avg = createAveragePosition(6);
   const titleScreen = createTitleScreen("CHRONOTOPE", 2000, 1000);
 
@@ -101,16 +90,10 @@ new p5((sk) => {
 
   sk.setup = () => {
     sk.createCanvas(sk.windowWidth, sk.windowHeight);
-    sk.background(0);
     sk.textSize(20);
     sk.textAlign(sk.CENTER, sk.CENTER);
-
-    // Initialize MediaPipe first
     handModel.initialize();
-
-    // Then initialize camera
     camFeed = initializeCamCapture(sk, handModel);
-
     const toggleSwitch = document.getElementById("checkboxInput");
     const toggleText = document.getElementById("toggleText");
     toggleSwitch.addEventListener("change", () => {
@@ -119,56 +102,59 @@ new p5((sk) => {
     });
   };
 
-  sk.draw = () => {
-    sk.background(0);
+  function isExperienceReady() {
+    const cam = camFeed && camFeed.elt && camFeed.elt.readyState >= 2 && camFeed.elt.videoWidth > 0 && camFeed.elt.videoHeight > 0 && !camFeed.elt.paused;
+    const model = handModel && handModel.isInitialized;
+    return cam && model;
+  }
 
-    // Check if camera feed is properly loaded and playing
-    const isCameraReady =
-      camFeed &&
-      camFeed.elt &&
-      camFeed.elt.readyState >= 2 && // HAVE_CURRENT_DATA or higher
-      camFeed.elt.videoWidth > 0 &&
-      camFeed.elt.videoHeight > 0 &&
-      !camFeed.elt.paused;
-
-    // Check if MediaPipe is initialized
-    const isHandModelReady = handModel && handModel.isInitialized;
-
-    // Only test landmarks if both camera and model are ready
-    let landmarksReady = false;
-    let LM, gestureResult;
-
-    if (isCameraReady && isHandModelReady) {
-      // Test if landmarks can be detected
-      try {
-        if (useCloseGesture) {
-          const landmarksIndex = [4, 8, 12, 0];
-          LM = getLandmarks(sk, handModel, camFeed, landmarksIndex, 1);
-          landmarksReady = LM && (LM.X4 !== undefined || LM.X8 !== undefined);
-        } else {
-          const landmarksIndex = [8];
-          LM = getLandmarks(sk, handModel, camFeed, landmarksIndex, 2);
-          landmarksReady =
-            LM && (LM.X8_hand0 !== undefined || LM.X8_hand1 !== undefined);
+  function drawSnapshots() {
+    for (let i = snapshots.length - 1; i >= 0; i--) {
+      const { img, x, y, w, h, startTime } = snapshots[i];
+      const elapsed = sk.millis() - startTime;
+      if (elapsed > fadeStartTime) {
+        const fadeElapsed = elapsed - fadeStartTime;
+        const opacity = sk.map(fadeElapsed, 0, fadeDuration, 255, 0);
+        if (opacity <= 0) {
+          snapshots.splice(i, 1);
+          continue;
         }
-      } catch (error) {
-        console.log("Landmark detection not ready yet:", error.message);
-        landmarksReady = false;
+        sk.tint(255, opacity);
+        sk.image(img, x, y, w, h);
+        sk.noTint();
+      } else {
+        sk.image(img, x, y, w, h);
       }
     }
+  }
 
-    const experienceReady = titleScreen.update(
-      sk,
-      isCameraReady && isHandModelReady
-    );
-
-    if (!experienceReady) {
-      return;
+  function drawSelectionRect() {
+    if ((isSelecting || isDeveloping) && selectionStart) {
+      sk.push();
+      sk.noFill();
+      sk.strokeWeight(2);
+      sk.drawingContext.setLineDash([5, 5]);
+      const bounds = pendingCapture || {
+        x: Math.min(selectionStart.x, selectionEnd.x),
+        y: Math.min(selectionStart.y, selectionEnd.y),
+        w: Math.abs(selectionStart.x - selectionEnd.x),
+        h: Math.abs(selectionStart.y - selectionEnd.y),
+      };
+      sk.stroke(bounds.w < minSnapshotSize && bounds.h < minSnapshotSize ? sk.color(255, 255, 0) : sk.color(255, 0, 0));
+      sk.rect(bounds.x, bounds.y, bounds.w, bounds.h);
+      sk.drawingContext.setLineDash([]);
+      sk.pop();
     }
+  }
 
+  sk.draw = () => {
+    sk.background(0);
+    const ready = isExperienceReady();
+    const experienceReady = titleScreen.update(sk, ready);
+    if (!experienceReady) return;
     sk.image(camFeed, 0, 0, camFeed.scaledWidth, camFeed.scaledHeight);
 
-    // Get fresh gesture results for the current frame
+    let LM, gestureResult;
     if (useCloseGesture) {
       const landmarksIndex = [4, 8, 12, 0];
       LM = getLandmarks(sk, handModel, camFeed, landmarksIndex, 1);
@@ -178,6 +164,134 @@ new p5((sk) => {
       LM = getLandmarks(sk, handModel, camFeed, landmarksIndex, 2);
       gestureResult = detectFarHandGesture(LM);
     }
+
+    const centroid = gestureResult.centroid;
+    const gesture = gestureResult.gesture;
+    const landmarks = gestureResult.landmarks;
+
+    if (gesture === "selecting" && centroid) {
+      selectingFrameCount++;
+      releasedFrameCount = 0;
+      lastCentroid = centroid;
+    } else if (gesture === "released") {
+      releasedFrameCount++;
+      selectingFrameCount = 0;
+    } else {
+      if (selectingFrameCount > 0) selectingFrameCount = Math.max(0, selectingFrameCount - 1);
+      if (releasedFrameCount > 0) releasedFrameCount = Math.max(0, releasedFrameCount - 1);
+    }
+
+    if (selectingFrameCount >= FRAME_THRESHOLD) confirmedGesture = "selecting";
+    else if (releasedFrameCount >= FRAME_THRESHOLD) confirmedGesture = "released";
+
+    const finalCentroid = confirmedGesture === "selecting" ? lastCentroid : (releasedFrameCount <= FRAME_THRESHOLD ? lastCentroid : null);
+    const displayCentroid = centroid || lastCentroid;
+
+    if (confirmedGesture === "selecting" && !isSelecting && !isDeveloping && finalCentroid) {
+      isSelecting = true;
+      selectionStart = { ...finalCentroid };
+      selectionEnd = { ...finalCentroid };
+    } else if (confirmedGesture === "selecting" && isSelecting && finalCentroid) {
+      selectionEnd = { ...finalCentroid };
+    } else if (confirmedGesture === "released" && isSelecting) {
+      isSelecting = false;
+      const w = Math.abs(selectionStart.x - selectionEnd.x);
+      const h = Math.abs(selectionStart.y - selectionEnd.y);
+      if (w > minSnapshotSize || h > minSnapshotSize) {
+        isDeveloping = true;
+        developmentStartTime = sk.millis();
+        pendingCapture = {
+          x: Math.min(selectionStart.x, selectionEnd.x),
+          y: Math.min(selectionStart.y, selectionEnd.y),
+          w, h
+        };
+        flash = { ...pendingCapture, flashDuration: developmentDuration, flashStartTime: sk.millis() };
+      } else {
+        selectionStart = null;
+        selectionEnd = null;
+      }
+    }
+
+    drawSnapshots();
+    drawSelectionRect();
+
+    if (flash) {
+      const elapsed = sk.millis() - flash.flashStartTime;
+      if (elapsed < flash.flashDuration) {
+        const opacity = sk.map(elapsed, 0, flash.flashDuration, 240, 0);
+        sk.fill(255, opacity);
+        sk.noStroke();
+        sk.rect(flash.x, flash.y, flash.w, flash.h);
+      } else {
+        flash = null;
+      }
+    }
+
+    if (displayCentroid) {
+      sk.push();
+      if (isSelecting) {
+        const currentW = selectionEnd ? Math.abs(selectionStart.x - selectionEnd.x) : 0;
+        const currentH = selectionEnd ? Math.abs(selectionStart.y - selectionEnd.y) : 0;
+        sk.fill(currentW < minSnapshotSize && currentH < minSnapshotSize ? sk.color(255, 255, 0) : sk.color(255, 0, 0));
+        sk.noStroke();
+      } else {
+        sk.noFill();
+        sk.stroke(255);
+        sk.strokeWeight(2);
+      }
+      sk.ellipse(displayCentroid.x, displayCentroid.y, 24);
+      sk.pop();
+    }
+
+    if (!useCloseGesture && landmarks) {
+      sk.push();
+      if (displayCentroid) {
+        const centroidRadius = 12;
+        const dx = landmarks.X8_2 - landmarks.X8_1;
+        const dy = landmarks.Y8_2 - landmarks.Y8_1;
+        const lineLength = Math.sqrt(dx * dx + dy * dy);
+        const unitX = dx / lineLength;
+        const unitY = dy / lineLength;
+        const dist1 = sk.dist(landmarks.X8_1, landmarks.Y8_1, displayCentroid.x, displayCentroid.y);
+        const dist2 = sk.dist(landmarks.X8_2, landmarks.Y8_2, displayCentroid.x, displayCentroid.y);
+        const stopDistance = centroidRadius;
+        const newX1 = landmarks.X8_1 + unitX * (dist1 - stopDistance);
+        const newY1 = landmarks.Y8_1 + unitY * (dist1 - stopDistance);
+        const newX2 = landmarks.X8_2 - unitX * (dist2 - stopDistance);
+        const newY2 = landmarks.Y8_2 - unitY * (dist2 - stopDistance);
+        sk.stroke(255);
+        sk.strokeWeight(2);
+        sk.line(landmarks.X8_1, landmarks.Y8_1, newX1, newY1);
+        sk.line(newX2, newY2, landmarks.X8_2, landmarks.Y8_2);
+      } else {
+        sk.stroke(255);
+        sk.strokeWeight(2);
+        sk.line(landmarks.X8_1, landmarks.Y8_1, landmarks.X8_2, landmarks.Y8_2);
+      }
+      sk.fill(255);
+      sk.noStroke();
+      sk.ellipse(landmarks.X8_1, landmarks.Y8_1, 12);
+      sk.ellipse(landmarks.X8_2, landmarks.Y8_2, 12);
+      sk.pop();
+    }
+
+    if (isDeveloping && sk.millis() - developmentStartTime >= developmentDuration && pendingCapture) {
+      const { x, y, w, h } = pendingCapture;
+      const videoX = (camFeed.width / camFeed.scaledWidth) * x;
+      const videoY = (camFeed.height / camFeed.scaledHeight) * y;
+      const videoW = (camFeed.width / camFeed.scaledWidth) * w;
+      const videoH = (camFeed.height / camFeed.scaledHeight) * h;
+      const selectedImage = sk.createGraphics(w, h);
+      selectedImage.copy(camFeed, videoX, videoY, videoW, videoH, 0, 0, w, h);
+      snapshots.push({ img: selectedImage, x, y, w, h, startTime: sk.millis() });
+      if (snapshots.length > snapshotLimit) snapshots.shift();
+      isDeveloping = false;
+      developmentStartTime = null;
+      pendingCapture = null;
+      selectionStart = null;
+      selectionEnd = null;
+    }
+  };
 
     const centroid = gestureResult.centroid;
     const gesture = gestureResult.gesture;
@@ -436,4 +550,5 @@ new p5((sk) => {
     sk.resizeCanvas(window.innerWidth, window.innerHeight);
     updateFeedDimensions(sk, camFeed);
   };
+
 });

@@ -675,27 +675,16 @@ var _videoFeedUtils = require("./videoFeedUtils");
 var _multiLandmarksHandler = require("./multiLandmarksHandler");
 var _utils = require("./utils");
 new (0, _p5Default.default)((sk)=>{
-    const FRAME_THRESHOLD = 12; // Number of frames to confirm gesture
-    const developmentDuration = 750; // Duration to develop a snapshot
-    const minSnapshotSize = 80; // Minimum dimension in pixels for to consider a snapshot valid
+    const FRAME_THRESHOLD = 12;
+    const developmentDuration = 750;
+    const minSnapshotSize = 80;
     const snapshotLimit = 20;
-    const fadeEnabled = true;
     const fadeStartTime = 120000;
     const fadeDuration = 10000;
-    let camFeed;
-    let snapshots = [];
-    let useCloseGesture = true;
-    let selectingFrameCount = 0;
-    let releasedFrameCount = 0;
-    let confirmedGesture = "released";
-    let lastCentroid = null;
-    let isSelecting = false;
-    let selectionStart = null;
-    let selectionEnd = null;
-    let isDeveloping = false;
-    let developmentStartTime = null;
-    let pendingCapture = null;
-    let flash = null;
+    let camFeed, snapshots = [], useCloseGesture = true;
+    let selectingFrameCount = 0, releasedFrameCount = 0, confirmedGesture = "released";
+    let lastCentroid = null, isSelecting = false, selectionStart = null, selectionEnd = null;
+    let isDeveloping = false, developmentStartTime = null, pendingCapture = null, flash = null;
     const avg = (0, _utils.createAveragePosition)(6);
     const titleScreen = (0, _utils.createTitleScreen)("CHRONOTOPE", 2000, 1000);
     function detectCloseHandGesture(LM) {
@@ -766,12 +755,9 @@ new (0, _p5Default.default)((sk)=>{
     }
     sk.setup = ()=>{
         sk.createCanvas(sk.windowWidth, sk.windowHeight);
-        sk.background(0);
         sk.textSize(20);
         sk.textAlign(sk.CENTER, sk.CENTER);
-        // Initialize MediaPipe first
         (0, _handsModel.mediaPipe).initialize();
-        // Then initialize camera
         camFeed = (0, _videoFeedUtils.initializeCamCapture)(sk, (0, _handsModel.mediaPipe));
         const toggleSwitch = document.getElementById("checkboxInput");
         const toggleText = document.getElementById("toggleText");
@@ -780,42 +766,56 @@ new (0, _p5Default.default)((sk)=>{
             toggleText.textContent = useCloseGesture ? "CLOSE" : "FAR";
         });
     };
+    function isExperienceReady() {
+        const cam = camFeed && camFeed.elt && camFeed.elt.readyState >= 2 && camFeed.elt.videoWidth > 0 && camFeed.elt.videoHeight > 0 && !camFeed.elt.paused;
+        const model = (0, _handsModel.mediaPipe) && (0, _handsModel.mediaPipe).isInitialized;
+        return cam && model;
+    }
+    function drawSnapshots() {
+        for(let i = snapshots.length - 1; i >= 0; i--){
+            const { img, x, y, w, h, startTime } = snapshots[i];
+            const elapsed = sk.millis() - startTime;
+            if (elapsed > fadeStartTime) {
+                const fadeElapsed = elapsed - fadeStartTime;
+                const opacity = sk.map(fadeElapsed, 0, fadeDuration, 255, 0);
+                if (opacity <= 0) {
+                    snapshots.splice(i, 1);
+                    continue;
+                }
+                sk.tint(255, opacity);
+                sk.image(img, x, y, w, h);
+                sk.noTint();
+            } else sk.image(img, x, y, w, h);
+        }
+    }
+    function drawSelectionRect() {
+        if ((isSelecting || isDeveloping) && selectionStart) {
+            sk.push();
+            sk.noFill();
+            sk.strokeWeight(2);
+            sk.drawingContext.setLineDash([
+                5,
+                5
+            ]);
+            const bounds = pendingCapture || {
+                x: Math.min(selectionStart.x, selectionEnd.x),
+                y: Math.min(selectionStart.y, selectionEnd.y),
+                w: Math.abs(selectionStart.x - selectionEnd.x),
+                h: Math.abs(selectionStart.y - selectionEnd.y)
+            };
+            sk.stroke(bounds.w < minSnapshotSize && bounds.h < minSnapshotSize ? sk.color(255, 255, 0) : sk.color(255, 0, 0));
+            sk.rect(bounds.x, bounds.y, bounds.w, bounds.h);
+            sk.drawingContext.setLineDash([]);
+            sk.pop();
+        }
+    }
     sk.draw = ()=>{
         sk.background(0);
-        // Check if camera feed is properly loaded and playing
-        const isCameraReady = camFeed && camFeed.elt && camFeed.elt.readyState >= 2 && // HAVE_CURRENT_DATA or higher
-        camFeed.elt.videoWidth > 0 && camFeed.elt.videoHeight > 0 && !camFeed.elt.paused;
-        // Check if MediaPipe is initialized
-        const isHandModelReady = (0, _handsModel.mediaPipe) && (0, _handsModel.mediaPipe).isInitialized;
-        // Only test landmarks if both camera and model are ready
-        let landmarksReady = false;
-        let LM, gestureResult;
-        if (isCameraReady && isHandModelReady) // Test if landmarks can be detected
-        try {
-            if (useCloseGesture) {
-                const landmarksIndex = [
-                    4,
-                    8,
-                    12,
-                    0
-                ];
-                LM = (0, _multiLandmarksHandler.getLandmarks)(sk, (0, _handsModel.mediaPipe), camFeed, landmarksIndex, 1);
-                landmarksReady = LM && (LM.X4 !== undefined || LM.X8 !== undefined);
-            } else {
-                const landmarksIndex = [
-                    8
-                ];
-                LM = (0, _multiLandmarksHandler.getLandmarks)(sk, (0, _handsModel.mediaPipe), camFeed, landmarksIndex, 2);
-                landmarksReady = LM && (LM.X8_hand0 !== undefined || LM.X8_hand1 !== undefined);
-            }
-        } catch (error) {
-            console.log("Landmark detection not ready yet:", error.message);
-            landmarksReady = false;
-        }
-        const experienceReady = titleScreen.update(sk, isCameraReady && isHandModelReady);
+        const ready = isExperienceReady();
+        const experienceReady = titleScreen.update(sk, ready);
         if (!experienceReady) return;
         sk.image(camFeed, 0, 0, camFeed.scaledWidth, camFeed.scaledHeight);
-        // Get fresh gesture results for the current frame
+        let LM, gestureResult;
         if (useCloseGesture) {
             const landmarksIndex = [
                 4,
@@ -835,7 +835,6 @@ new (0, _p5Default.default)((sk)=>{
         const centroid = gestureResult.centroid;
         const gesture = gestureResult.gesture;
         const landmarks = gestureResult.landmarks;
-        // Frame-based debouncing
         if (gesture === "selecting" && centroid) {
             selectingFrameCount++;
             releasedFrameCount = 0;
@@ -885,43 +884,8 @@ new (0, _p5Default.default)((sk)=>{
                 selectionEnd = null;
             }
         }
-        for(let i = snapshots.length - 1; i >= 0; i--){
-            const { img, x, y, w, h, startTime } = snapshots[i];
-            if (fadeEnabled) {
-                const elapsed = sk.millis() - startTime;
-                if (elapsed > fadeStartTime) {
-                    const fadeElapsed = elapsed - fadeStartTime;
-                    const opacity = sk.map(fadeElapsed, 0, fadeDuration, 255, 0);
-                    if (opacity <= 0) {
-                        snapshots.splice(i, 1);
-                        continue;
-                    }
-                    sk.tint(255, opacity);
-                    sk.image(img, x, y, w, h);
-                    sk.noTint();
-                } else sk.image(img, x, y, w, h);
-            } else sk.image(img, x, y, w, h);
-        }
-        if ((isSelecting || isDeveloping) && selectionStart) {
-            sk.push();
-            sk.noFill();
-            sk.strokeWeight(2);
-            sk.drawingContext.setLineDash([
-                5,
-                5
-            ]);
-            const bounds = pendingCapture || {
-                x: Math.min(selectionStart.x, selectionEnd.x),
-                y: Math.min(selectionStart.y, selectionEnd.y),
-                w: Math.abs(selectionStart.x - selectionEnd.x),
-                h: Math.abs(selectionStart.y - selectionEnd.y)
-            };
-            if (bounds.w < minSnapshotSize && bounds.h < minSnapshotSize) sk.stroke(255, 255, 0);
-            else sk.stroke(255, 0, 0);
-            sk.rect(bounds.x, bounds.y, bounds.w, bounds.h);
-            sk.drawingContext.setLineDash([]);
-            sk.pop();
-        }
+        drawSnapshots();
+        drawSelectionRect();
         if (flash) {
             const elapsed = sk.millis() - flash.flashStartTime;
             if (elapsed < flash.flashDuration) {
@@ -936,8 +900,7 @@ new (0, _p5Default.default)((sk)=>{
             if (isSelecting) {
                 const currentW = selectionEnd ? Math.abs(selectionStart.x - selectionEnd.x) : 0;
                 const currentH = selectionEnd ? Math.abs(selectionStart.y - selectionEnd.y) : 0;
-                if (currentW < minSnapshotSize && currentH < minSnapshotSize) sk.fill(255, 255, 0);
-                else sk.fill(255, 0, 0);
+                sk.fill(currentW < minSnapshotSize && currentH < minSnapshotSize ? sk.color(255, 255, 0) : sk.color(255, 0, 0));
                 sk.noStroke();
             } else {
                 sk.noFill();
@@ -949,20 +912,16 @@ new (0, _p5Default.default)((sk)=>{
         }
         if (!useCloseGesture && landmarks) {
             sk.push();
-            // Draw line first, but stop before centroid
             if (displayCentroid) {
-                const centroidRadius = 12; // Half of the centroid circle diameter (24)
+                const centroidRadius = 12;
                 const dx = landmarks.X8_2 - landmarks.X8_1;
                 const dy = landmarks.Y8_2 - landmarks.Y8_1;
                 const lineLength = Math.sqrt(dx * dx + dy * dy);
-                // Calculate unit vector along the line
                 const unitX = dx / lineLength;
                 const unitY = dy / lineLength;
-                // Calculate distances from each finger to centroid
                 const dist1 = sk.dist(landmarks.X8_1, landmarks.Y8_1, displayCentroid.x, displayCentroid.y);
                 const dist2 = sk.dist(landmarks.X8_2, landmarks.Y8_2, displayCentroid.x, displayCentroid.y);
-                // Calculate new endpoints that stop before the centroid
-                const stopDistance = centroidRadius; // 4 pixels gap
+                const stopDistance = centroidRadius;
                 const newX1 = landmarks.X8_1 + unitX * (dist1 - stopDistance);
                 const newY1 = landmarks.Y8_1 + unitY * (dist1 - stopDistance);
                 const newX2 = landmarks.X8_2 - unitX * (dist2 - stopDistance);
@@ -972,40 +931,15 @@ new (0, _p5Default.default)((sk)=>{
                 sk.line(landmarks.X8_1, landmarks.Y8_1, newX1, newY1);
                 sk.line(newX2, newY2, landmarks.X8_2, landmarks.Y8_2);
             } else {
-                // If no centroid, draw full line
                 sk.stroke(255);
                 sk.strokeWeight(2);
                 sk.line(landmarks.X8_1, landmarks.Y8_1, landmarks.X8_2, landmarks.Y8_2);
             }
-            // Draw finger tip circles
             sk.fill(255);
             sk.noStroke();
             sk.ellipse(landmarks.X8_1, landmarks.Y8_1, 12);
             sk.ellipse(landmarks.X8_2, landmarks.Y8_2, 12);
             sk.pop();
-        }
-        if (isDeveloping && sk.millis() - developmentStartTime >= developmentDuration && pendingCapture) {
-            const { x, y, w, h } = pendingCapture;
-            const videoX = camFeed.width / camFeed.scaledWidth * x;
-            const videoY = camFeed.height / camFeed.scaledHeight * y;
-            const videoW = camFeed.width / camFeed.scaledWidth * w;
-            const videoH = camFeed.height / camFeed.scaledHeight * h;
-            const selectedImage = sk.createGraphics(w, h);
-            selectedImage.copy(camFeed, videoX, videoY, videoW, videoH, 0, 0, w, h);
-            snapshots.push({
-                img: selectedImage,
-                x,
-                y,
-                w,
-                h,
-                startTime: sk.millis()
-            });
-            if (snapshots.length > snapshotLimit) snapshots.shift();
-            isDeveloping = false;
-            developmentStartTime = null;
-            pendingCapture = null;
-            selectionStart = null;
-            selectionEnd = null;
         }
     };
     sk.windowResized = ()=>{
