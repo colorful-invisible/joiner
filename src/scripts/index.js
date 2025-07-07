@@ -104,6 +104,11 @@ new p5((sk) => {
     sk.background(0);
     sk.textSize(20);
     sk.textAlign(sk.CENTER, sk.CENTER);
+
+    // Initialize MediaPipe first
+    handModel.initialize();
+
+    // Then initialize camera
     camFeed = initializeCamCapture(sk, handModel);
 
     const toggleSwitch = document.getElementById("checkboxInput");
@@ -117,38 +122,60 @@ new p5((sk) => {
   sk.draw = () => {
     sk.background(0);
 
-    // Check if both camera feed and landmarks are ready
+    // Check if camera feed is properly loaded and playing
+    const isCameraReady =
+      camFeed &&
+      camFeed.elt &&
+      camFeed.elt.readyState >= 2 && // HAVE_CURRENT_DATA or higher
+      camFeed.elt.videoWidth > 0 &&
+      camFeed.elt.videoHeight > 0 &&
+      !camFeed.elt.paused;
+
+    // Check if MediaPipe is initialized
+    const isHandModelReady = handModel && handModel.isInitialized;
+
+    // Only test landmarks if both camera and model are ready
     let landmarksReady = false;
     let LM, gestureResult;
 
-    if (camFeed) {
+    if (isCameraReady && isHandModelReady) {
       // Test if landmarks can be detected
-      if (useCloseGesture) {
-        const landmarksIndex = [4, 8, 12, 0];
-        LM = getLandmarks(sk, handModel, camFeed, landmarksIndex, 1);
-        landmarksReady =
-          handModel && (LM.X4 !== undefined || LM.X8 !== undefined);
-      } else {
-        const landmarksIndex = [8];
-        LM = getLandmarks(sk, handModel, camFeed, landmarksIndex, 2);
-        landmarksReady =
-          handModel && (LM.X8_hand0 !== undefined || LM.X8_hand1 !== undefined);
+      try {
+        if (useCloseGesture) {
+          const landmarksIndex = [4, 8, 12, 0];
+          LM = getLandmarks(sk, handModel, camFeed, landmarksIndex, 1);
+          landmarksReady = LM && (LM.X4 !== undefined || LM.X8 !== undefined);
+        } else {
+          const landmarksIndex = [8];
+          LM = getLandmarks(sk, handModel, camFeed, landmarksIndex, 2);
+          landmarksReady =
+            LM && (LM.X8_hand0 !== undefined || LM.X8_hand1 !== undefined);
+        }
+      } catch (error) {
+        console.log("Landmark detection not ready yet:", error.message);
+        landmarksReady = false;
       }
     }
 
-    const experienceReady = titleScreen.update(sk, camFeed && landmarksReady);
+    const experienceReady = titleScreen.update(
+      sk,
+      isCameraReady && isHandModelReady
+    );
 
     if (!experienceReady) {
-      return; // Stay on title screen
+      return;
     }
 
-    // At this point, we know the title screen is complete and everything is ready
     sk.image(camFeed, 0, 0, camFeed.scaledWidth, camFeed.scaledHeight);
 
-    // Get gesture results (we already have LM from the readiness check)
+    // Get fresh gesture results for the current frame
     if (useCloseGesture) {
+      const landmarksIndex = [4, 8, 12, 0];
+      LM = getLandmarks(sk, handModel, camFeed, landmarksIndex, 1);
       gestureResult = detectCloseHandGesture(LM);
     } else {
+      const landmarksIndex = [8];
+      LM = getLandmarks(sk, handModel, camFeed, landmarksIndex, 2);
       gestureResult = detectFarHandGesture(LM);
     }
 

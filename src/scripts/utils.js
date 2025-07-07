@@ -6,61 +6,6 @@ function pulse(sk, min, max, time) {
   return amplitude * sk.sin(sk.frameCount * (sk.TWO_PI / time)) + mid;
 }
 
-// ---- AVERAGE LANDMARK POSITION FOR SMOOTHING
-// --------------------------------------------
-// Usage on index.js:
-// const avgPos = averageLandmarkPosition(2);
-// const noseX = avgPos("NX", LM.X0);
-// const noseY = avgPos("NY", LM.Y0);
-
-function averageLandmarkPosition(size) {
-  let queues = {};
-
-  return (key, value) => {
-    if (!queues[key]) {
-      queues[key] = [];
-    }
-
-    let queue = queues[key];
-    queue.push(value);
-    if (queue.length > size) {
-      queue.shift();
-    }
-
-    // Calculate average
-    let sum = queue.reduce((a, b) => a + b, 0);
-    return sum / queue.length;
-  };
-}
-
-// ---- SIMPLE SMOOTHING WITHOUT KEYS
-// ----------------------------------
-// Usage: const smoother = createSmoother(3);
-// const smoothedValue = smoother.smooth(rawValue);
-
-function createSmoother(size = 3) {
-  let queue = [];
-
-  return {
-    smooth: (value) => {
-      if (value === undefined || value === null) return value;
-
-      queue.push(value);
-      if (queue.length > size) {
-        queue.shift();
-      }
-
-      // Calculate average
-      let sum = queue.reduce((a, b) => a + b, 0);
-      return sum / queue.length;
-    },
-
-    reset: () => {
-      queue = [];
-    },
-  };
-}
-
 // ---- SIMPLE AVERAGE POSITION
 // ----------------------------
 // This function creates a simple average position function that maintains a queue of values for each key.
@@ -157,6 +102,18 @@ function createTitleScreen(
         sk.textAlign(sk.CENTER, sk.CENTER);
         sk.textSize(48);
         sk.text(title, sk.width / 2, sk.height / 2);
+
+        // Show loading status during waiting phase
+        if (phase === "waiting") {
+          sk.textSize(16);
+          sk.fill(150);
+          sk.text(
+            "Loading camera and hand detection...",
+            sk.width / 2,
+            sk.height / 2 + 60
+          );
+        }
+
         sk.pop();
       } else if (phase === "fading") {
         const fadeProgress = elapsed / fadeDuration;
@@ -185,9 +142,4 @@ function createTitleScreen(
   };
 }
 
-export {
-  averageLandmarkPosition,
-  createSmoother,
-  createAveragePosition,
-  createTitleScreen,
-};
+export { createAveragePosition, createTitleScreen };

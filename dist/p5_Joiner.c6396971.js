@@ -697,6 +697,7 @@ new (0, _p5Default.default)((sk)=>{
     let pendingCapture = null;
     let flash = null;
     const avg = (0, _utils.createAveragePosition)(6);
+    const titleScreen = (0, _utils.createTitleScreen)("CHRONOTOPE", 2000, 1000);
     function detectCloseHandGesture(LM) {
         const baseCentroidThreshold = 24;
         const referenceHandSize = 128;
@@ -768,6 +769,9 @@ new (0, _p5Default.default)((sk)=>{
         sk.background(0);
         sk.textSize(20);
         sk.textAlign(sk.CENTER, sk.CENTER);
+        // Initialize MediaPipe first
+        (0, _handsModel.mediaPipe).initialize();
+        // Then initialize camera
         camFeed = (0, _videoFeedUtils.initializeCamCapture)(sk, (0, _handsModel.mediaPipe));
         const toggleSwitch = document.getElementById("checkboxInput");
         const toggleText = document.getElementById("toggleText");
@@ -778,13 +782,40 @@ new (0, _p5Default.default)((sk)=>{
     };
     sk.draw = ()=>{
         sk.background(0);
-        if (!camFeed) {
-            sk.fill(0);
-            sk.text("LOADING", sk.width / 2, sk.height / 2);
-            return;
-        }
-        sk.image(camFeed, 0, 0, camFeed.scaledWidth, camFeed.scaledHeight);
+        // Check if camera feed is properly loaded and playing
+        const isCameraReady = camFeed && camFeed.elt && camFeed.elt.readyState >= 2 && // HAVE_CURRENT_DATA or higher
+        camFeed.elt.videoWidth > 0 && camFeed.elt.videoHeight > 0 && !camFeed.elt.paused;
+        // Check if MediaPipe is initialized
+        const isHandModelReady = (0, _handsModel.mediaPipe) && (0, _handsModel.mediaPipe).isInitialized;
+        // Only test landmarks if both camera and model are ready
+        let landmarksReady = false;
         let LM, gestureResult;
+        if (isCameraReady && isHandModelReady) // Test if landmarks can be detected
+        try {
+            if (useCloseGesture) {
+                const landmarksIndex = [
+                    4,
+                    8,
+                    12,
+                    0
+                ];
+                LM = (0, _multiLandmarksHandler.getLandmarks)(sk, (0, _handsModel.mediaPipe), camFeed, landmarksIndex, 1);
+                landmarksReady = LM && (LM.X4 !== undefined || LM.X8 !== undefined);
+            } else {
+                const landmarksIndex = [
+                    8
+                ];
+                LM = (0, _multiLandmarksHandler.getLandmarks)(sk, (0, _handsModel.mediaPipe), camFeed, landmarksIndex, 2);
+                landmarksReady = LM && (LM.X8_hand0 !== undefined || LM.X8_hand1 !== undefined);
+            }
+        } catch (error) {
+            console.log("Landmark detection not ready yet:", error.message);
+            landmarksReady = false;
+        }
+        const experienceReady = titleScreen.update(sk, isCameraReady && isHandModelReady);
+        if (!experienceReady) return;
+        sk.image(camFeed, 0, 0, camFeed.scaledWidth, camFeed.scaledHeight);
+        // Get fresh gesture results for the current frame
         if (useCloseGesture) {
             const landmarksIndex = [
                 4,
@@ -46888,6 +46919,7 @@ parcelHelpers.defineInteropFlag(exports);
 parcelHelpers.export(exports, "initializeCamCapture", ()=>initializeCamCapture);
 parcelHelpers.export(exports, "updateFeedDimensions", ()=>updateFeedDimensions);
 function initializeCamCapture(sk, gesturePipe) {
+    console.log("Initializing camera capture...");
     const camFeed = sk.createCapture({
         flipped: true,
         audio: false,
@@ -46902,14 +46934,25 @@ function initializeCamCapture(sk, gesturePipe) {
             },
             frameRate: {
                 ideal: 30,
-                min: 24
+                min: 15
             }
         }
     }, (stream)=>{
-        // Just update dimensions once, no waiting loop
+        console.log("Camera stream started successfully");
         updateFeedDimensions(sk, camFeed, false);
-        // Start gesture prediction immediately
-        gesturePipe.predictWebcam(camFeed);
+        if (gesturePipe && gesturePipe.isInitialized) gesturePipe.predictWebcam(camFeed);
+    });
+    // Add error handling
+    camFeed.elt.addEventListener("loadeddata", ()=>{
+        console.log("Camera data loaded, dimensions:", camFeed.elt.videoWidth, "x", camFeed.elt.videoHeight);
+    });
+    camFeed.elt.addEventListener("error", (e)=>{
+        console.error("Camera error:", e);
+    });
+    camFeed.elt.addEventListener("canplay", ()=>{
+        console.log("Camera ready to play");
+        // Start MediaPipe prediction once camera is ready
+        if (gesturePipe && gesturePipe.isInitialized) gesturePipe.predictWebcam(camFeed);
     });
     camFeed.elt.setAttribute("playsinline", "");
     camFeed.hide();
@@ -46979,51 +47022,12 @@ const getLandmarks = (sketch, mediaPipe, camFeed, indices, numHands = null)=>{
 // -------------------
 var parcelHelpers = require("@parcel/transformer-js/src/esmodule-helpers.js");
 parcelHelpers.defineInteropFlag(exports);
-parcelHelpers.export(exports, "averageLandmarkPosition", ()=>averageLandmarkPosition);
-parcelHelpers.export(exports, "createSmoother", ()=>createSmoother);
 parcelHelpers.export(exports, "createAveragePosition", ()=>createAveragePosition);
+parcelHelpers.export(exports, "createTitleScreen", ()=>createTitleScreen);
 function pulse(sk, min, max, time) {
     const mid = (min + max) / 2;
     const amplitude = (max - min) / 2;
     return amplitude * sk.sin(sk.frameCount * (sk.TWO_PI / time)) + mid;
-}
-// ---- AVERAGE LANDMARK POSITION FOR SMOOTHING
-// --------------------------------------------
-// Usage on index.js:
-// const avgPos = averageLandmarkPosition(2);
-// const noseX = avgPos("NX", LM.X0);
-// const noseY = avgPos("NY", LM.Y0);
-function averageLandmarkPosition(size) {
-    let queues = {};
-    return (key, value)=>{
-        if (!queues[key]) queues[key] = [];
-        let queue = queues[key];
-        queue.push(value);
-        if (queue.length > size) queue.shift();
-        // Calculate average
-        let sum = queue.reduce((a, b)=>a + b, 0);
-        return sum / queue.length;
-    };
-}
-// ---- SIMPLE SMOOTHING WITHOUT KEYS
-// ----------------------------------
-// Usage: const smoother = createSmoother(3);
-// const smoothedValue = smoother.smooth(rawValue);
-function createSmoother(size = 3) {
-    let queue = [];
-    return {
-        smooth: (value)=>{
-            if (value === undefined || value === null) return value;
-            queue.push(value);
-            if (queue.length > size) queue.shift();
-            // Calculate average
-            let sum = queue.reduce((a, b)=>a + b, 0);
-            return sum / queue.length;
-        },
-        reset: ()=>{
-            queue = [];
-        }
-    };
 }
 // ---- SIMPLE AVERAGE POSITION
 // ----------------------------
@@ -47042,6 +47046,82 @@ function createAveragePosition(size = 3) {
         // Calculate average
         let sum = queue.reduce((a, b)=>a + b, 0);
         return sum / queue.length;
+    };
+}
+// ---- TITLE SCREEN WITH FADE
+// ---------------------------
+// Creates a title screen that displays for a configurable time, then fades out
+// Usage: const titleScreen = createTitleScreen("CHRONOTOPE", 2000, 1000);
+// In draw(): const showExperience = titleScreen.update(sk, isExperienceReady);
+function createTitleScreen(title = "CHRONOTOPE", displayDuration = 2000, fadeDuration = 1000) {
+    let startTime = null;
+    let phase = "waiting"; // "waiting", "displaying", "fading", "complete"
+    let experienceWasReady = false;
+    return {
+        update: (sk, isExperienceReady = true)=>{
+            // Initialize start time on first call
+            if (startTime === null) startTime = sk.millis();
+            const currentTime = sk.millis();
+            const elapsed = currentTime - startTime;
+            // Track if experience has ever been ready
+            if (isExperienceReady) experienceWasReady = true;
+            // State machine for title screen phases
+            switch(phase){
+                case "waiting":
+                    // Wait for experience to be ready
+                    if (experienceWasReady) {
+                        phase = "displaying";
+                        startTime = currentTime; // Reset timer for display phase
+                    }
+                    break;
+                case "displaying":
+                    // Display title for the specified duration
+                    if (elapsed >= displayDuration) {
+                        phase = "fading";
+                        startTime = currentTime; // Reset timer for fade phase
+                    }
+                    break;
+                case "fading":
+                    // Fade out over the specified duration
+                    if (elapsed >= fadeDuration) phase = "complete";
+                    break;
+                case "complete":
+                    break;
+            }
+            // Render the title based on current phase
+            if (phase === "waiting" || phase === "displaying") {
+                sk.push();
+                sk.fill(255);
+                sk.textAlign(sk.CENTER, sk.CENTER);
+                sk.textSize(48);
+                sk.text(title, sk.width / 2, sk.height / 2);
+                // Show loading status during waiting phase
+                if (phase === "waiting") {
+                    sk.textSize(16);
+                    sk.fill(150);
+                    sk.text("Loading camera and hand detection...", sk.width / 2, sk.height / 2 + 60);
+                }
+                sk.pop();
+            } else if (phase === "fading") {
+                const fadeProgress = elapsed / fadeDuration;
+                const opacity = sk.map(fadeProgress, 0, 1, 255, 0);
+                sk.push();
+                sk.fill(255, opacity);
+                sk.textAlign(sk.CENTER, sk.CENTER);
+                sk.textSize(48);
+                sk.text(title, sk.width / 2, sk.height / 2);
+                sk.pop();
+            }
+            // Return true when experience should be shown
+            return phase === "complete";
+        },
+        reset: ()=>{
+            startTime = null;
+            phase = "waiting";
+            experienceWasReady = false;
+        },
+        isComplete: ()=>phase === "complete",
+        getCurrentPhase: ()=>phase
     };
 }
 
