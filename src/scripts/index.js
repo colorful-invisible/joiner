@@ -68,33 +68,56 @@ new p5((sk) => {
 
   function detectFarHandGesture(LM) {
     const gestureThreshold = 96;
-    if (LM.X8_hand0 && LM.X8_hand1) {
-      const X8_1 = avg("x8_hand1", LM.X8_hand0);
-      const Y8_1 = avg("y8_hand1", LM.Y8_hand0);
-      const X8_2 = avg("x8_hand2", LM.X8_hand1);
-      const Y8_2 = avg("y8_hand2", LM.Y8_hand1);
 
-      const centroid = {
-        x: (X8_1 + X8_2) / 2,
-        y: (Y8_1 + Y8_2) / 2,
-      };
+    // Try all combinations of landmarks 8 and 12 from both hands
+    const combinations = [
+      { hand1: "8", hand2: "8" }, // Index-Index (original)
+      { hand1: "8", hand2: "12" }, // Index-Middle
+      { hand1: "12", hand2: "8" }, // Middle-Index
+      { hand1: "12", hand2: "12" }, // Middle-Middle
+    ];
 
-      const distance = sk.dist(X8_1, Y8_1, X8_2, Y8_2);
+    for (const combo of combinations) {
+      const key1X = `X${combo.hand1}_hand0`;
+      const key1Y = `Y${combo.hand1}_hand0`;
+      const key2X = `X${combo.hand2}_hand1`;
+      const key2Y = `Y${combo.hand2}_hand1`;
 
-      if (distance < gestureThreshold) {
-        return {
-          gesture: "selecting",
-          centroid,
-          landmarks: { X8_1, Y8_1, X8_2, Y8_2 },
+      if (LM[key1X] && LM[key1Y] && LM[key2X] && LM[key2Y]) {
+        const avgKey1X = `x${combo.hand1}_hand1`;
+        const avgKey1Y = `y${combo.hand1}_hand1`;
+        const avgKey2X = `x${combo.hand2}_hand2`;
+        const avgKey2Y = `y${combo.hand2}_hand2`;
+
+        const X1 = avg(avgKey1X, LM[key1X]);
+        const Y1 = avg(avgKey1Y, LM[key1Y]);
+        const X2 = avg(avgKey2X, LM[key2X]);
+        const Y2 = avg(avgKey2Y, LM[key2Y]);
+
+        const centroid = {
+          x: (X1 + X2) / 2,
+          y: (Y1 + Y2) / 2,
         };
-      }
 
-      return {
-        gesture: "released",
-        centroid,
-        landmarks: { X8_1, Y8_1, X8_2, Y8_2 },
-      };
+        const distance = sk.dist(X1, Y1, X2, Y2);
+
+        // Return immediately when we find a valid combination
+        if (distance < gestureThreshold) {
+          return {
+            gesture: "selecting",
+            centroid,
+            landmarks: { X8_1: X1, Y8_1: Y1, X8_2: X2, Y8_2: Y2 },
+          };
+        } else {
+          return {
+            gesture: "released",
+            centroid,
+            landmarks: { X8_1: X1, Y8_1: Y1, X8_2: X2, Y8_2: Y2 },
+          };
+        }
+      }
     }
+
     return { gesture: "released", centroid: null, landmarks: null };
   }
 
@@ -130,7 +153,7 @@ new p5((sk) => {
       LM = getLandmarks(sk, handModel, camFeed, landmarksIndex, 1);
       gestureResult = detectCloseHandGesture(LM);
     } else {
-      const landmarksIndex = [8];
+      const landmarksIndex = [8, 12];
       LM = getLandmarks(sk, handModel, camFeed, landmarksIndex, 2);
       gestureResult = detectFarHandGesture(LM);
     }
