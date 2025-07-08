@@ -966,7 +966,14 @@ new (0, _p5Default.default)((sk)=>{
         // Draw individual landmarks for close gesture mode
         if (useCloseGesture && LM) {
             sk.push();
-            sk.fill(255);
+            // Apply same color logic as the centroid selection
+            if (isSelecting) {
+                const currentW = selectionEnd ? Math.abs(selectionStart.x - selectionEnd.x) : 0;
+                const currentH = selectionEnd ? Math.abs(selectionStart.y - selectionEnd.y) : 0;
+                sk.fill(currentW < minSnapshotSize && currentH < minSnapshotSize ? sk.color(255, 255, 0) // Yellow for small selection
+                 : sk.color(255, 0, 0) // Red for valid selection
+                );
+            } else sk.fill(255); // White when not selecting
             sk.noStroke();
             // Apply averaging to reduce jitter
             const X4 = avg("x4_close", LM.X4);
