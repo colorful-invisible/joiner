@@ -184,23 +184,11 @@ new p5((sk) => {
       handleUndoFunctionality.frameCount = 0;
 
     // Button setup
-
     sk.textSize(20);
     const buttonWidth = sk.textWidth("UNDO") + 16;
     const buttonHeight = 32;
     const buttonX = 20;
     const buttonY = sk.height - 52;
-    sk.textAlign(sk.CENTER, sk.CENTER);
-    sk.fill(255);
-    sk.text("UNDO", buttonX + buttonWidth / 2, buttonY + buttonHeight / 2);
-    sk.pop();
-
-    sk.push();
-    sk.stroke(255);
-    sk.strokeWeight(2);
-    sk.noFill();
-    sk.rect(buttonX, buttonY, buttonWidth, buttonHeight);
-    sk.pop();
 
     // Check if landmark touches button
     const inButton =
@@ -227,6 +215,21 @@ new p5((sk) => {
               landmarks.X8_hand1 <= buttonX + buttonWidth &&
               landmarks.Y8_hand1 >= buttonY &&
               landmarks.Y8_hand1 <= buttonY + buttonHeight))));
+
+    // Draw button with opacity feedback
+    const opacity = inButton ? 255 : 5;
+
+    sk.push();
+    sk.stroke(255, opacity);
+    sk.strokeWeight(2);
+    sk.noFill();
+    sk.rect(buttonX, buttonY, buttonWidth, buttonHeight);
+
+    sk.fill(255, opacity);
+    sk.noStroke();
+    sk.textAlign(sk.CENTER, sk.CENTER);
+    sk.text("UNDO", buttonX + buttonWidth / 2, buttonY + buttonHeight / 2);
+    sk.pop();
 
     // Trigger undo
     if (inButton && !handleUndoFunctionality.triggered) {
@@ -263,9 +266,6 @@ new p5((sk) => {
     const centroid = gestureResult.centroid;
     const gesture = gestureResult.gesture;
     const landmarks = gestureResult.landmarks;
-
-    // Handle undo functionality
-    handleUndoFunctionality(LM);
 
     if (gesture === "selecting" && centroid) {
       selectingFrameCount++;
@@ -334,6 +334,9 @@ new p5((sk) => {
 
     drawSnapshots();
     drawSelectionRect();
+
+    // Handle undo functionality (draw on top of snapshots)
+    handleUndoFunctionality(LM);
 
     if (flash) {
       const elapsed = sk.millis() - flash.flashStartTime;

@@ -821,18 +821,20 @@ new (0, _p5Default.default)((sk)=>{
         const buttonHeight = 32;
         const buttonX = 20;
         const buttonY = sk.height - 52;
-        sk.textAlign(sk.CENTER, sk.CENTER);
-        sk.fill(255);
-        sk.text("UNDO", buttonX + buttonWidth / 2, buttonY + buttonHeight / 2);
-        sk.pop();
+        // Check if landmark touches button
+        const inButton = landmarks && (useCloseGesture && (landmarks.X4 >= buttonX && landmarks.X4 <= buttonX + buttonWidth && landmarks.Y4 >= buttonY && landmarks.Y4 <= buttonY + buttonHeight || landmarks.X8 >= buttonX && landmarks.X8 <= buttonX + buttonWidth && landmarks.Y8 >= buttonY && landmarks.Y8 <= buttonY + buttonHeight || landmarks.X12 >= buttonX && landmarks.X12 <= buttonX + buttonWidth && landmarks.Y12 >= buttonY && landmarks.Y12 <= buttonY + buttonHeight) || !useCloseGesture && (landmarks.X8_hand0 >= buttonX && landmarks.X8_hand0 <= buttonX + buttonWidth && landmarks.Y8_hand0 >= buttonY && landmarks.Y8_hand0 <= buttonY + buttonHeight || landmarks.X8_hand1 >= buttonX && landmarks.X8_hand1 <= buttonX + buttonWidth && landmarks.Y8_hand1 >= buttonY && landmarks.Y8_hand1 <= buttonY + buttonHeight));
+        // Draw button with opacity feedback
+        const opacity = inButton ? 255 : 5;
         sk.push();
-        sk.stroke(255);
+        sk.stroke(255, opacity);
         sk.strokeWeight(2);
         sk.noFill();
         sk.rect(buttonX, buttonY, buttonWidth, buttonHeight);
+        sk.fill(255, opacity);
+        sk.noStroke();
+        sk.textAlign(sk.CENTER, sk.CENTER);
+        sk.text("UNDO", buttonX + buttonWidth / 2, buttonY + buttonHeight / 2);
         sk.pop();
-        // Check if landmark touches button
-        const inButton = landmarks && (useCloseGesture && (landmarks.X4 >= buttonX && landmarks.X4 <= buttonX + buttonWidth && landmarks.Y4 >= buttonY && landmarks.Y4 <= buttonY + buttonHeight || landmarks.X8 >= buttonX && landmarks.X8 <= buttonX + buttonWidth && landmarks.Y8 >= buttonY && landmarks.Y8 <= buttonY + buttonHeight || landmarks.X12 >= buttonX && landmarks.X12 <= buttonX + buttonWidth && landmarks.Y12 >= buttonY && landmarks.Y12 <= buttonY + buttonHeight) || !useCloseGesture && (landmarks.X8_hand0 >= buttonX && landmarks.X8_hand0 <= buttonX + buttonWidth && landmarks.Y8_hand0 >= buttonY && landmarks.Y8_hand0 <= buttonY + buttonHeight || landmarks.X8_hand1 >= buttonX && landmarks.X8_hand1 <= buttonX + buttonWidth && landmarks.Y8_hand1 >= buttonY && landmarks.Y8_hand1 <= buttonY + buttonHeight));
         // Trigger undo
         if (inButton && !handleUndoFunctionality.triggered) {
             handleUndoFunctionality.frameCount++;
@@ -872,8 +874,6 @@ new (0, _p5Default.default)((sk)=>{
         const centroid = gestureResult.centroid;
         const gesture = gestureResult.gesture;
         const landmarks = gestureResult.landmarks;
-        // Handle undo functionality
-        handleUndoFunctionality(LM);
         if (gesture === "selecting" && centroid) {
             selectingFrameCount++;
             releasedFrameCount = 0;
@@ -925,6 +925,8 @@ new (0, _p5Default.default)((sk)=>{
         }
         drawSnapshots();
         drawSelectionRect();
+        // Handle undo functionality (draw on top of snapshots)
+        handleUndoFunctionality(LM);
         if (flash) {
             const elapsed = sk.millis() - flash.flashStartTime;
             if (elapsed < flash.flashDuration) {
