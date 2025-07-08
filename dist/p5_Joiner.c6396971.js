@@ -698,7 +698,7 @@ new (0, _p5Default.default)((sk)=>{
         sk.textSize(20);
         sk.textAlign(sk.CENTER, sk.CENTER);
         // Create title screen with custom font
-        titleScreen = (0, _utils.createTitleScreen)("CHRONOTOPE #1 - Fragments", 2000, 500, customFont);
+        titleScreen = (0, _utils.createTitleScreen)("CHRONOTOPE #1 - FRAGMENTS", 2000, 500, customFont);
         (0, _handsModel.mediaPipe).initialize();
         camFeed = (0, _videoFeedUtils.initializeCamCapture)(sk, (0, _handsModel.mediaPipe));
         const toggleSwitch = document.getElementById("checkboxInput");
@@ -47083,7 +47083,7 @@ const createTitleScreen = (title = "CHRONOTOPE", displayDuration = 2000, fadeDur
         sk.push();
         sk.fill(255, opacity);
         sk.textAlign(sk.CENTER, sk.CENTER);
-        sk.textSize(48);
+        sk.textSize(32);
         if (font) sk.textFont(font);
         sk.text(title, sk.width / 2, sk.height / 2);
         sk.pop();
@@ -47092,19 +47092,21 @@ const createTitleScreen = (title = "CHRONOTOPE", displayDuration = 2000, fadeDur
         update: (sk, isExperienceReady = true)=>{
             if (startTime === null) startTime = sk.millis();
             const currentTime = sk.millis();
-            const elapsed = currentTime - startTime;
+            let elapsed = currentTime - startTime;
             if (isExperienceReady) experienceWasReady = true;
             switch(phase){
                 case "waiting":
                     if (experienceWasReady) {
                         phase = "displaying";
                         startTime = currentTime;
+                        elapsed = 0;
                     }
                     break;
                 case "displaying":
                     if (elapsed >= displayDuration) {
                         phase = "fading";
                         startTime = currentTime;
+                        elapsed = 0;
                     }
                     break;
                 case "fading":

@@ -49,7 +49,7 @@ new p5((sk) => {
 
     // Create title screen with custom font
     titleScreen = createTitleScreen(
-      "CHRONOTOPE #1 - Fragments",
+      "CHRONOTOPE #1 - FRAGMENTS",
       2000,
       500,
       customFont
