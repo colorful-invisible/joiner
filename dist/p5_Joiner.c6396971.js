@@ -678,9 +678,6 @@ new (0, _p5Default.default)((sk)=>{
     // Configuration
     const FRAME_THRESHOLD = 12, developmentDuration = 750, minSnapshotSize = 80, snapshotLimit = 20;
     const fadeStartTime = 120000, fadeDuration = 10000, fadeEnabled = true;
-    // Undo area configuration
-    const undoAreaSize = 80; // Size of the undo area in pixels
-    let undoTriggered = false, undoFrameCount = 0;
     // State variables
     let camFeed, snapshots = [], useCloseGesture = true;
     let selectingFrameCount = 0, releasedFrameCount = 0, confirmedGesture = "released";
@@ -813,47 +810,47 @@ new (0, _p5Default.default)((sk)=>{
             sk.pop();
         }
     }
-    // Helper function to check if landmarks are in undo area (left bottom corner)
-    function checkUndoArea(landmarks) {
-        if (!landmarks) return false;
-        const undoArea = {
-            x: 0,
-            y: sk.height - undoAreaSize,
-            width: undoAreaSize,
-            height: undoAreaSize
-        };
-        // Helper function to check if a point is in the undo area
-        const isInUndoArea = (x, y)=>{
-            return x >= undoArea.x && x <= undoArea.x + undoArea.width && y >= undoArea.y && y <= undoArea.y + undoArea.height;
-        };
-        // Check for close gesture landmarks (thumb, index, middle finger)
-        if (useCloseGesture) return landmarks.X4 !== undefined && landmarks.Y4 !== undefined && isInUndoArea(landmarks.X4, landmarks.Y4) || landmarks.X8 !== undefined && landmarks.Y8 !== undefined && isInUndoArea(landmarks.X8, landmarks.Y8) || landmarks.X12 !== undefined && landmarks.Y12 !== undefined && isInUndoArea(landmarks.X12, landmarks.Y12);
-        else // Check for far gesture landmarks (both index fingers)
-        return landmarks.X8_hand0 !== undefined && landmarks.Y8_hand0 !== undefined && isInUndoArea(landmarks.X8_hand0, landmarks.Y8_hand0) || landmarks.X8_hand1 !== undefined && landmarks.Y8_hand1 !== undefined && isInUndoArea(landmarks.X8_hand1, landmarks.Y8_hand1);
-    }
-    // Helper function to perform undo operation
-    function performUndo() {
-        if (snapshots.length > 0) snapshots.pop();
-    }
-    // Helper function to draw undo area indicator
-    function drawUndoArea() {
-        sk.push();
-        sk.fill(255, 255, 255, 30); // Semi-transparent white
-        sk.stroke(255, 255, 255, 100);
-        sk.strokeWeight(2);
-        sk.rect(0, sk.height - undoAreaSize, undoAreaSize, undoAreaSize);
-        // Draw "UNDO" text
-        sk.fill(255, 150);
+    // Simple undo button
+    function handleUndoFunctionality(landmarks) {
+        // State management
+        if (!handleUndoFunctionality.triggered) handleUndoFunctionality.triggered = false;
+        if (!handleUndoFunctionality.frameCount) handleUndoFunctionality.frameCount = 0;
+        // Button setup
+        sk.textSize(20);
+        const buttonWidth = sk.textWidth("UNDO") + 16;
+        const buttonHeight = 32;
+        const buttonX = 20;
+        const buttonY = sk.height - 52;
         sk.textAlign(sk.CENTER, sk.CENTER);
-        sk.textSize(12);
-        sk.text("UNDO", undoAreaSize / 2, sk.height - undoAreaSize / 2);
+        sk.fill(255);
+        sk.text("UNDO", buttonX + buttonWidth / 2, buttonY + buttonHeight / 2);
         sk.pop();
+        sk.push();
+        sk.stroke(255);
+        sk.strokeWeight(2);
+        sk.noFill();
+        sk.rect(buttonX, buttonY, buttonWidth, buttonHeight);
+        sk.pop();
+        // Check if landmark touches button
+        const inButton = landmarks && (useCloseGesture && (landmarks.X4 >= buttonX && landmarks.X4 <= buttonX + buttonWidth && landmarks.Y4 >= buttonY && landmarks.Y4 <= buttonY + buttonHeight || landmarks.X8 >= buttonX && landmarks.X8 <= buttonX + buttonWidth && landmarks.Y8 >= buttonY && landmarks.Y8 <= buttonY + buttonHeight || landmarks.X12 >= buttonX && landmarks.X12 <= buttonX + buttonWidth && landmarks.Y12 >= buttonY && landmarks.Y12 <= buttonY + buttonHeight) || !useCloseGesture && (landmarks.X8_hand0 >= buttonX && landmarks.X8_hand0 <= buttonX + buttonWidth && landmarks.Y8_hand0 >= buttonY && landmarks.Y8_hand0 <= buttonY + buttonHeight || landmarks.X8_hand1 >= buttonX && landmarks.X8_hand1 <= buttonX + buttonWidth && landmarks.Y8_hand1 >= buttonY && landmarks.Y8_hand1 <= buttonY + buttonHeight));
+        // Trigger undo
+        if (inButton && !handleUndoFunctionality.triggered) {
+            handleUndoFunctionality.frameCount++;
+            if (handleUndoFunctionality.frameCount >= FRAME_THRESHOLD) {
+                if (snapshots.length > 0) snapshots.pop();
+                handleUndoFunctionality.triggered = true;
+                handleUndoFunctionality.frameCount = 0;
+            }
+        } else if (!inButton) {
+            handleUndoFunctionality.triggered = false;
+            handleUndoFunctionality.frameCount = 0;
+        }
     }
     sk.draw = ()=>{
         sk.background(0);
-        const ready = isExperienceReady();
-        const experienceReady = titleScreen.update(sk, ready);
-        if (!experienceReady) return;
+        // const ready = isExperienceReady();
+        // const experienceReady = titleScreen.update(sk, ready);
+        // if (!experienceReady) return;
         sk.image(camFeed, 0, 0, camFeed.scaledWidth, camFeed.scaledHeight);
         let LM, gestureResult;
         if (useCloseGesture) {
@@ -875,19 +872,8 @@ new (0, _p5Default.default)((sk)=>{
         const centroid = gestureResult.centroid;
         const gesture = gestureResult.gesture;
         const landmarks = gestureResult.landmarks;
-        // Check for undo gesture
-        const inUndoArea = checkUndoArea(LM);
-        if (inUndoArea && !undoTriggered) {
-            undoFrameCount++;
-            if (undoFrameCount >= FRAME_THRESHOLD) {
-                performUndo();
-                undoTriggered = true;
-                undoFrameCount = 0;
-            }
-        } else if (!inUndoArea) {
-            undoTriggered = false;
-            undoFrameCount = 0;
-        }
+        // Handle undo functionality
+        handleUndoFunctionality(LM);
         if (gesture === "selecting" && centroid) {
             selectingFrameCount++;
             releasedFrameCount = 0;
@@ -966,14 +952,7 @@ new (0, _p5Default.default)((sk)=>{
         // Draw individual landmarks for close gesture mode
         if (useCloseGesture && LM) {
             sk.push();
-            // Apply same color logic as the centroid selection
-            if (isSelecting) {
-                const currentW = selectionEnd ? Math.abs(selectionStart.x - selectionEnd.x) : 0;
-                const currentH = selectionEnd ? Math.abs(selectionStart.y - selectionEnd.y) : 0;
-                sk.fill(currentW < minSnapshotSize && currentH < minSnapshotSize ? sk.color(255, 255, 0) // Yellow for small selection
-                 : sk.color(255, 0, 0) // Red for valid selection
-                );
-            } else sk.fill(255); // White when not selecting
+            sk.fill(255);
             sk.noStroke();
             // Apply averaging to reduce jitter
             const X4 = avg("x4_close", LM.X4);
@@ -1056,8 +1035,6 @@ new (0, _p5Default.default)((sk)=>{
             selectionStart = null;
             selectionEnd = null;
         }
-        // Draw undo area
-        drawUndoArea();
     };
     sk.windowResized = ()=>{
         sk.resizeCanvas(window.innerWidth, window.innerHeight);
