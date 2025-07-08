@@ -3,6 +3,7 @@ import { mediaPipe as handModel } from "./handsModel";
 import { initializeCamCapture, updateFeedDimensions } from "./videoFeedUtils";
 import { getLandmarks } from "./multiLandmarksHandler";
 import { createAveragePosition, createTitleScreen } from "./utils";
+import fontUrl from "../assets/fonts/MonaspaceNeon-WideExtraLight.otf";
 
 new p5((sk) => {
   // Configuration
@@ -30,9 +31,39 @@ new p5((sk) => {
     pendingCapture = null,
     flash = null;
 
+  // Font loading
+  let customFont;
+
   // Helpers
   const avg = createAveragePosition(6);
-  const titleScreen = createTitleScreen("CHRONOTOPE #1 - Fragments", 2000, 500);
+  let titleScreen;
+
+  sk.preload = () => {
+    customFont = sk.loadFont(fontUrl);
+  };
+
+  sk.setup = () => {
+    sk.createCanvas(sk.windowWidth, sk.windowHeight);
+    sk.textSize(20);
+    sk.textAlign(sk.CENTER, sk.CENTER);
+
+    // Create title screen with custom font
+    titleScreen = createTitleScreen(
+      "CHRONOTOPE #1 - Fragments",
+      2000,
+      500,
+      customFont
+    );
+
+    handModel.initialize();
+    camFeed = initializeCamCapture(sk, handModel);
+    const toggleSwitch = document.getElementById("checkboxInput");
+    const toggleText = document.getElementById("toggleText");
+    toggleSwitch.addEventListener("change", () => {
+      useCloseGesture = !toggleSwitch.checked;
+      toggleText.textContent = useCloseGesture ? "NEAR" : "FAR";
+    });
+  };
 
   function detectCloseHandGesture(LM) {
     const baseCentroidThreshold = 24;
@@ -101,20 +132,6 @@ new p5((sk) => {
     }
     return { gesture: "released", centroid: null, landmarks: null };
   }
-
-  sk.setup = () => {
-    sk.createCanvas(sk.windowWidth, sk.windowHeight);
-    sk.textSize(20);
-    sk.textAlign(sk.CENTER, sk.CENTER);
-    handModel.initialize();
-    camFeed = initializeCamCapture(sk, handModel);
-    const toggleSwitch = document.getElementById("checkboxInput");
-    const toggleText = document.getElementById("toggleText");
-    toggleSwitch.addEventListener("change", () => {
-      useCloseGesture = !toggleSwitch.checked;
-      toggleText.textContent = useCloseGesture ? "NEAR" : "FAR";
-    });
-  };
 
   function isExperienceReady() {
     const cam =
@@ -216,7 +233,7 @@ new p5((sk) => {
               landmarks.Y8_hand1 >= buttonY &&
               landmarks.Y8_hand1 <= buttonY + buttonHeight))));
 
-    // Draw button with opacity feedback
+    // Draw button
     const opacity = inButton ? 255 : 5;
 
     sk.push();
@@ -247,9 +264,9 @@ new p5((sk) => {
 
   sk.draw = () => {
     sk.background(0);
-    // const ready = isExperienceReady();
-    // const experienceReady = titleScreen.update(sk, ready);
-    // if (!experienceReady) return;
+    const ready = isExperienceReady();
+    const experienceReady = titleScreen.update(sk, ready);
+    if (!experienceReady) return;
     sk.image(camFeed, 0, 0, camFeed.scaledWidth, camFeed.scaledHeight);
 
     let LM, gestureResult;

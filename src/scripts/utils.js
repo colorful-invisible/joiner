@@ -25,11 +25,12 @@ const createAveragePosition = (size = 3) => {
 };
 
 // Creates title screen with configurable display and fade durations
-// Usage: const titleScreen = createTitleScreen("My Game", 3000, 1500);
+// Usage: const titleScreen = createTitleScreen("My Game", 3000, 1500, font);
 const createTitleScreen = (
   title = "CHRONOTOPE",
   displayDuration = 2000,
-  fadeDuration = 500
+  fadeDuration = 500,
+  font = null
 ) => {
   let startTime = null,
     phase = "waiting",
@@ -40,6 +41,7 @@ const createTitleScreen = (
     sk.fill(255, opacity);
     sk.textAlign(sk.CENTER, sk.CENTER);
     sk.textSize(48);
+    if (font) sk.textFont(font);
     sk.text(title, sk.width / 2, sk.height / 2);
     sk.pop();
   };
