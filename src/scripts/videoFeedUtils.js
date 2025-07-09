@@ -1,7 +1,12 @@
-// Version 2.1 - 03.07.2025 - Gesture Recognizer
-export function initializeCamCapture(sk, gesturePipe) {
-  const startGesturePrediction = () => {
-    if (gesturePipe?.isInitialized) gesturePipe.predictWebcam(camFeed);
+// Version 2.1 - 03.07.2025 - Pose Model
+export function initializeCamCapture(sk, poseModel) {
+  const startPosePrediction = () => {
+    if (poseModel?.isInitialized) {
+      console.log("Starting pose prediction...");
+      poseModel.predictWebcam(camFeed);
+    } else {
+      console.log("Pose model not initialized yet");
+    }
   };
 
   const camFeed = sk.createCapture(
@@ -16,7 +21,7 @@ export function initializeCamCapture(sk, gesturePipe) {
     },
     () => {
       updateFeedDimensions(sk, camFeed, false);
-      startGesturePrediction();
+      startPosePrediction();
     }
   );
 
@@ -29,7 +34,7 @@ export function initializeCamCapture(sk, gesturePipe) {
   camFeed.elt.addEventListener("error", (e) =>
     console.error("Camera error:", e)
   );
-  camFeed.elt.addEventListener("canplay", startGesturePrediction);
+  camFeed.elt.addEventListener("canplay", startPosePrediction);
 
   camFeed.elt.setAttribute("playsinline", "");
   camFeed.hide();

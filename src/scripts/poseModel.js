@@ -15,6 +15,7 @@ let lastVideoTime = -1;
 export const mediaPipe = {
   landmarks: [],
   worldLandmarks: [],
+  isInitialized: false,
   initialize: async () => {
     try {
       console.log("Initializing pose model...");
@@ -28,6 +29,7 @@ export const mediaPipe = {
         numPoses: NUM_POSES,
       });
       console.log("Pose model initialized successfully");
+      mediaPipe.isInitialized = true;
     } catch (error) {
       console.error("Failed to initialize PoseLandmarker:", error);
     }
@@ -36,11 +38,23 @@ export const mediaPipe = {
     // Alias for predictWebcam to match the interface expected by videoFeedUtils
     return mediaPipe.predictWebcam(video);
   },
-  predictWebcam: async (video) => {
+  predictWebcam: (video) => {
+    // Start the prediction loop without awaiting
+    console.log("Starting pose prediction for video:", video);
+    mediaPipe.predictWebcamAsync(video);
+  },
+  predictWebcamAsync: async (video) => {
     try {
       if (!poseLandmarker) {
         console.log("Pose model not initialized yet, skipping prediction");
-        window.requestAnimationFrame(() => mediaPipe.predictWebcam(video));
+        window.requestAnimationFrame(() => mediaPipe.predictWebcamAsync(video));
+        return;
+      }
+
+      // Check if video element is ready
+      if (!video || !video.elt || video.elt.readyState < 2) {
+        console.log("Video not ready yet, readyState:", video?.elt?.readyState);
+        window.requestAnimationFrame(() => mediaPipe.predictWebcamAsync(video));
         return;
       }
 
@@ -67,7 +81,7 @@ export const mediaPipe = {
         }
       }
 
-      window.requestAnimationFrame(() => mediaPipe.predictWebcam(video));
+      window.requestAnimationFrame(() => mediaPipe.predictWebcamAsync(video));
     } catch (error) {
       console.error("Failed to predict webcam:", error);
     }

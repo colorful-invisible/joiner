@@ -670,9 +670,9 @@ function hmrAccept(bundle /*: ParcelRequire */ , id /*: string */ ) {
 var parcelHelpers = require("@parcel/transformer-js/src/esmodule-helpers.js");
 var _p5 = require("p5");
 var _p5Default = parcelHelpers.interopDefault(_p5);
-var _handsModel = require("./handsModel");
+var _poseModel = require("./poseModel");
 var _videoFeedUtils = require("./videoFeedUtils");
-var _multiLandmarksHandler = require("./multiLandmarksHandler");
+var _landmarksHandler = require("./landmarksHandler");
 var _utils = require("./utils");
 var _monaspaceNeonWideExtraLightOtf = require("../assets/fonts/MonaspaceNeon-WideExtraLight.otf");
 var _monaspaceNeonWideExtraLightOtfDefault = parcelHelpers.interopDefault(_monaspaceNeonWideExtraLightOtf);
@@ -681,7 +681,7 @@ new (0, _p5Default.default)((sk)=>{
     const FRAME_THRESHOLD = 12, developmentDuration = 750, minSnapshotSize = 80, snapshotLimit = 20;
     const fadeStartTime = 120000, fadeDuration = 10000, fadeEnabled = true;
     // State variables
-    let camFeed, snapshots = [], useCloseGesture = true;
+    let camFeed, snapshots = [];
     let selectingFrameCount = 0, releasedFrameCount = 0, confirmedGesture = "released";
     let lastCentroid = null, isSelecting = false, selectionStart = null, selectionEnd = null;
     let isDeveloping = false, developmentStartTime = null, pendingCapture = null, flash = null;
@@ -699,72 +699,64 @@ new (0, _p5Default.default)((sk)=>{
         sk.textAlign(sk.CENTER, sk.CENTER);
         // Create title screen with custom font
         titleScreen = (0, _utils.createTitleScreen)("CHRONOTOPE #1 - FRAGMENTS", 2000, 500, customFont);
-        (0, _handsModel.mediaPipe).initialize();
-        camFeed = (0, _videoFeedUtils.initializeCamCapture)(sk, (0, _handsModel.mediaPipe));
-        const toggleSwitch = document.getElementById("checkboxInput");
-        const toggleText = document.getElementById("toggleText");
-        toggleSwitch.addEventListener("change", ()=>{
-            useCloseGesture = !toggleSwitch.checked;
-            toggleText.textContent = useCloseGesture ? "NEAR" : "FAR";
-        });
+        (0, _poseModel.mediaPipe).initialize();
+        camFeed = (0, _videoFeedUtils.initializeCamCapture)(sk, (0, _poseModel.mediaPipe));
     };
-    function detectCloseHandGesture(LM) {
-        const baseCentroidThreshold = 24;
-        const referenceHandSize = 128;
-        if (LM.X4 !== undefined && LM.X8 !== undefined && LM.X12 !== undefined && LM.X0 !== undefined) {
-            const handSize = sk.dist(LM.X0, LM.Y0, LM.X12, LM.Y12);
-            const dynamicThreshold = handSize / referenceHandSize * baseCentroidThreshold;
+    function detectPoseGesture(LM) {
+        const gestureThreshold = 50;
+        if (LM.X20 !== undefined && LM.X11 !== undefined && LM.X12 !== undefined && LM.X19 !== undefined) {
+            // Calculate centroid of points 11 and 12
             const centroid = {
-                x: (LM.X4 + LM.X8 + LM.X12) / 3,
-                y: (LM.Y4 + LM.Y8 + LM.Y12) / 3
+                x: (LM.X11 + LM.X12) / 2,
+                y: (LM.Y11 + LM.Y12) / 2
             };
-            const dThumbToCentroid = sk.dist(LM.X4, LM.Y4, centroid.x, centroid.y);
-            const dIndexToCentroid = sk.dist(LM.X8, LM.Y8, centroid.x, centroid.y);
-            const dMiddleToCentroid = sk.dist(LM.X12, LM.Y12, centroid.x, centroid.y);
-            if (dThumbToCentroid < dynamicThreshold && dIndexToCentroid < dynamicThreshold && dMiddleToCentroid < dynamicThreshold) return {
+            // Calculate distances from points 20 and 19 to centroid
+            const d20ToCentroid = sk.dist(LM.X20, LM.Y20, centroid.x, centroid.y);
+            const d19ToCentroid = sk.dist(LM.X19, LM.Y19, centroid.x, centroid.y);
+            let selectionPoint = null;
+            let isSelecting = false;
+            // When 20 is touching centroid, use 19 for selection
+            if (d20ToCentroid < gestureThreshold) {
+                selectionPoint = {
+                    x: LM.X19,
+                    y: LM.Y19
+                };
+                isSelecting = true;
+            } else if (d19ToCentroid < gestureThreshold) {
+                selectionPoint = {
+                    x: LM.X20,
+                    y: LM.Y20
+                };
+                isSelecting = true;
+            }
+            if (isSelecting) return {
                 gesture: "selecting",
-                centroid
-            };
-            return {
-                gesture: "released",
-                centroid
-            };
-        }
-        return {
-            gesture: "released",
-            centroid: null
-        };
-    }
-    function detectFarHandGesture(LM) {
-        const gestureThreshold = 96;
-        if (LM.X8_hand0 && LM.X8_hand1) {
-            const X8_1 = avg("x8_hand1", LM.X8_hand0);
-            const Y8_1 = avg("y8_hand1", LM.Y8_hand0);
-            const X8_2 = avg("x8_hand2", LM.X8_hand1);
-            const Y8_2 = avg("y8_hand2", LM.Y8_hand1);
-            const centroid = {
-                x: (X8_1 + X8_2) / 2,
-                y: (Y8_1 + Y8_2) / 2
-            };
-            const distance = sk.dist(X8_1, Y8_1, X8_2, Y8_2);
-            if (distance < gestureThreshold) return {
-                gesture: "selecting",
-                centroid,
+                centroid: selectionPoint,
                 landmarks: {
-                    X8_1,
-                    Y8_1,
-                    X8_2,
-                    Y8_2
+                    X20: LM.X20,
+                    Y20: LM.Y20,
+                    X11: LM.X11,
+                    Y11: LM.Y11,
+                    X12: LM.X12,
+                    Y12: LM.Y12,
+                    X19: LM.X19,
+                    Y19: LM.Y19,
+                    actualCentroid: centroid,
+                    selectionPoint: selectionPoint
                 }
             };
             return {
                 gesture: "released",
                 centroid,
                 landmarks: {
-                    X8_1,
-                    Y8_1,
-                    X8_2,
-                    Y8_2
+                    X20: LM.X20,
+                    Y20: LM.Y20,
+                    X11: LM.X11,
+                    Y11: LM.Y11,
+                    X12: LM.X12,
+                    Y12: LM.Y12,
+                    X19: LM.X19,
+                    Y19: LM.Y19
                 }
             };
         }
@@ -776,7 +768,7 @@ new (0, _p5Default.default)((sk)=>{
     }
     function isExperienceReady() {
         const cam = camFeed && camFeed.elt && camFeed.elt.readyState >= 2 && camFeed.elt.videoWidth > 0 && camFeed.elt.videoHeight > 0 && !camFeed.elt.paused;
-        const model = (0, _handsModel.mediaPipe) && (0, _handsModel.mediaPipe).isInitialized;
+        const model = (0, _poseModel.mediaPipe) && (0, _poseModel.mediaPipe).isInitialized;
         return cam && model;
     }
     function drawSnapshots() {
@@ -831,7 +823,7 @@ new (0, _p5Default.default)((sk)=>{
         const buttonX = 20;
         const buttonY = sk.height - 52;
         // Check if landmark touches button
-        const inButton = landmarks && (useCloseGesture && (landmarks.X4 >= buttonX && landmarks.X4 <= buttonX + buttonWidth && landmarks.Y4 >= buttonY && landmarks.Y4 <= buttonY + buttonHeight || landmarks.X8 >= buttonX && landmarks.X8 <= buttonX + buttonWidth && landmarks.Y8 >= buttonY && landmarks.Y8 <= buttonY + buttonHeight || landmarks.X12 >= buttonX && landmarks.X12 <= buttonX + buttonWidth && landmarks.Y12 >= buttonY && landmarks.Y12 <= buttonY + buttonHeight) || !useCloseGesture && (landmarks.X8_hand0 >= buttonX && landmarks.X8_hand0 <= buttonX + buttonWidth && landmarks.Y8_hand0 >= buttonY && landmarks.Y8_hand0 <= buttonY + buttonHeight || landmarks.X8_hand1 >= buttonX && landmarks.X8_hand1 <= buttonX + buttonWidth && landmarks.Y8_hand1 >= buttonY && landmarks.Y8_hand1 <= buttonY + buttonHeight));
+        const inButton = landmarks && (landmarks.X20 >= buttonX && landmarks.X20 <= buttonX + buttonWidth && landmarks.Y20 >= buttonY && landmarks.Y20 <= buttonY + buttonHeight || landmarks.X19 >= buttonX && landmarks.X19 <= buttonX + buttonWidth && landmarks.Y19 >= buttonY && landmarks.Y19 <= buttonY + buttonHeight);
         // Draw button
         const opacity = inButton ? 255 : 5;
         sk.push();
@@ -864,22 +856,21 @@ new (0, _p5Default.default)((sk)=>{
         if (!experienceReady) return;
         sk.image(camFeed, 0, 0, camFeed.scaledWidth, camFeed.scaledHeight);
         let LM, gestureResult;
-        if (useCloseGesture) {
-            const landmarksIndex = [
-                4,
-                8,
-                12,
-                0
-            ];
-            LM = (0, _multiLandmarksHandler.getLandmarks)(sk, (0, _handsModel.mediaPipe), camFeed, landmarksIndex, 1);
-            gestureResult = detectCloseHandGesture(LM);
-        } else {
-            const landmarksIndex = [
-                8
-            ];
-            LM = (0, _multiLandmarksHandler.getLandmarks)(sk, (0, _handsModel.mediaPipe), camFeed, landmarksIndex, 2);
-            gestureResult = detectFarHandGesture(LM);
-        }
+        const landmarksIndex = [
+            20,
+            11,
+            12,
+            19
+        ];
+        LM = (0, _landmarksHandler.getMappedLandmarks)(sk, (0, _poseModel.mediaPipe), camFeed, landmarksIndex, 1);
+        // Debug logging
+        console.log("Raw pose landmarks:", (0, _poseModel.mediaPipe).landmarks.length > 0 ? (0, _poseModel.mediaPipe).landmarks[0] : "No landmarks");
+        console.log("Mapped landmarks:", LM);
+        console.log("X20:", LM.X20, "Y20:", LM.Y20);
+        console.log("X19:", LM.X19, "Y19:", LM.Y19);
+        console.log("X11:", LM.X11, "Y11:", LM.Y11);
+        console.log("X12:", LM.X12, "Y12:", LM.Y12);
+        gestureResult = detectPoseGesture(LM);
         const centroid = gestureResult.centroid;
         const gesture = gestureResult.gesture;
         const landmarks = gestureResult.landmarks;
@@ -960,67 +951,92 @@ new (0, _p5Default.default)((sk)=>{
             sk.ellipse(displayCentroid.x, displayCentroid.y, 24);
             sk.pop();
         }
-        // Draw individual landmarks for close gesture mode
-        if (useCloseGesture && LM) {
+        // Draw points 20, 19, and the centroid between 11 and 12
+        if (LM && landmarks) {
             sk.push();
-            sk.fill(255);
             sk.noStroke();
-            // Apply averaging to reduce jitter
-            const X4 = avg("x4_close", LM.X4);
-            const Y4 = avg("y4_close", LM.Y4);
-            const X8 = avg("x8_close", LM.X8);
-            const Y8 = avg("y8_close", LM.Y8);
-            const X12 = avg("x12_close", LM.X12);
-            const Y12 = avg("y12_close", LM.Y12);
-            // Draw finger landmarks with smoothing
-            const landmarks = [
-                {
-                    x: X4,
-                    y: Y4
-                },
-                {
-                    x: X8,
-                    y: Y8
-                },
-                {
-                    x: X12,
-                    y: Y12
-                }
-            ];
-            landmarks.forEach(({ x, y })=>{
-                if (x !== undefined && y !== undefined) sk.ellipse(x, y, 12);
-            });
-            sk.pop();
-        }
-        if (!useCloseGesture && landmarks) {
-            sk.push();
-            if (displayCentroid) {
-                const centroidRadius = 12;
-                const dx = landmarks.X8_2 - landmarks.X8_1;
-                const dy = landmarks.Y8_2 - landmarks.Y8_1;
-                const lineLength = Math.sqrt(dx * dx + dy * dy);
-                const unitX = dx / lineLength;
-                const unitY = dy / lineLength;
-                const dist1 = sk.dist(landmarks.X8_1, landmarks.Y8_1, displayCentroid.x, displayCentroid.y);
-                const dist2 = sk.dist(landmarks.X8_2, landmarks.Y8_2, displayCentroid.x, displayCentroid.y);
-                const stopDistance = centroidRadius;
-                const newX1 = landmarks.X8_1 + unitX * (dist1 - stopDistance);
-                const newY1 = landmarks.Y8_1 + unitY * (dist1 - stopDistance);
-                const newX2 = landmarks.X8_2 - unitX * (dist2 - stopDistance);
-                const newY2 = landmarks.Y8_2 - unitY * (dist2 - stopDistance);
-                sk.stroke(255);
-                sk.strokeWeight(2);
-                sk.line(landmarks.X8_1, landmarks.Y8_1, newX1, newY1);
-                sk.line(newX2, newY2, landmarks.X8_2, landmarks.Y8_2);
-            } else {
-                sk.stroke(255);
-                sk.strokeWeight(2);
-                sk.line(landmarks.X8_1, landmarks.Y8_1, landmarks.X8_2, landmarks.Y8_2);
+            // Directly use LM values (no averaging) for debug visibility
+            const X20 = LM.X20;
+            const Y20 = LM.Y20;
+            const X19 = LM.X19;
+            const Y19 = LM.Y19;
+            const X11 = LM.X11;
+            const Y11 = LM.Y11;
+            const X12 = LM.X12;
+            const Y12 = LM.Y12;
+            // Centroid between 11 and 12
+            const centroidX = (X11 + X12) / 2;
+            const centroidY = (Y11 + Y12) / 2;
+            // Calculate distances to determine which point is touching centroid
+            const d20ToCentroid = sk.dist(X20, Y20, centroidX, centroidY);
+            const d19ToCentroid = sk.dist(X19, Y19, centroidX, centroidY);
+            const gestureThreshold = 50;
+            // Determine visual states based on gesture logic
+            const is20TouchingCentroid = d20ToCentroid < gestureThreshold;
+            const is19TouchingCentroid = d19ToCentroid < gestureThreshold;
+            const isPoint20Selection = is19TouchingCentroid && !is20TouchingCentroid; // 20 is selection when 19 touches
+            const isPoint19Selection = is20TouchingCentroid && !is19TouchingCentroid; // 19 is selection when 20 touches
+            // Draw point 20 (red, with different styles based on state)
+            if (X20 !== undefined && Y20 !== undefined) {
+                sk.stroke(0);
+                sk.strokeWeight(4);
+                if (is20TouchingCentroid) {
+                    // Point 20 is touching centroid - bright red with thick outline
+                    sk.fill(255, 50, 50);
+                    sk.strokeWeight(6);
+                } else if (isPoint20Selection) {
+                    // Point 20 is the selection point - pulsing red
+                    const pulse = sk.sin(sk.millis() * 0.01) * 0.3 + 0.7;
+                    sk.fill(255 * pulse, 0, 0);
+                    sk.strokeWeight(5);
+                } else // Point 20 is neutral
+                sk.fill(255, 0, 0);
+                sk.ellipse(X20, Y20, 28, 28);
             }
-            sk.fill(255);
-            sk.noStroke();
-            sk.ellipse(landmarks.X8_1, landmarks.Y8_1, 12);
-            sk.ellipse(landmarks.X8_2, landmarks.Y8_2, 12);
+            // Draw point 19 (green, with different styles based on state)
+            if (X19 !== undefined && Y19 !== undefined) {
+                sk.stroke(0);
+                sk.strokeWeight(4);
+                if (is19TouchingCentroid) {
+                    // Point 19 is touching centroid - bright green with thick outline
+                    sk.fill(50, 255, 50);
+                    sk.strokeWeight(6);
+                } else if (isPoint19Selection) {
+                    // Point 19 is the selection point - pulsing green
+                    const pulse = sk.sin(sk.millis() * 0.01) * 0.3 + 0.7;
+                    sk.fill(0, 255 * pulse, 0);
+                    sk.strokeWeight(5);
+                } else // Point 19 is neutral
+                sk.fill(0, 255, 0);
+                sk.ellipse(X19, Y19, 28, 28);
+            }
+            // Draw centroid between 11 and 12 (blue, larger when being touched)
+            if (centroidX !== undefined && centroidY !== undefined) {
+                sk.stroke(0);
+                sk.strokeWeight(4);
+                if (is20TouchingCentroid || is19TouchingCentroid) {
+                    // Centroid is being touched - larger and brighter
+                    sk.fill(100, 200, 255);
+                    sk.strokeWeight(6);
+                    sk.ellipse(centroidX, centroidY, 36, 36);
+                } else {
+                    // Centroid is neutral
+                    sk.fill(0, 128, 255);
+                    sk.ellipse(centroidX, centroidY, 28, 28);
+                }
+            }
+            // Draw connection lines to show the gesture state
+            if (is20TouchingCentroid && isPoint19Selection) {
+                // Draw line from 20 to centroid (touching) and highlight 19 as selection
+                sk.stroke(255, 100, 100);
+                sk.strokeWeight(3);
+                sk.line(X20, Y20, centroidX, centroidY);
+            } else if (is19TouchingCentroid && isPoint20Selection) {
+                // Draw line from 19 to centroid (touching) and highlight 20 as selection
+                sk.stroke(100, 255, 100);
+                sk.strokeWeight(3);
+                sk.line(X19, Y19, centroidX, centroidY);
+            }
             sk.pop();
         }
         if (isDeveloping && sk.millis() - developmentStartTime >= developmentDuration && pendingCapture) {
@@ -1053,7 +1069,7 @@ new (0, _p5Default.default)((sk)=>{
     };
 });
 
-},{"p5":"6IEby","./handsModel":"gv1qp","./videoFeedUtils":"KriuE","./multiLandmarksHandler":"lplXV","./utils":"1X9hu","../assets/fonts/MonaspaceNeon-WideExtraLight.otf":"4FU6e","@parcel/transformer-js/src/esmodule-helpers.js":"jnFvT"}],"6IEby":[function(require,module,exports,__globalThis) {
+},{"p5":"6IEby","./poseModel":"660ov","./videoFeedUtils":"KriuE","./utils":"1X9hu","../assets/fonts/MonaspaceNeon-WideExtraLight.otf":"4FU6e","@parcel/transformer-js/src/esmodule-helpers.js":"jnFvT","./landmarksHandler":"gNlhQ"}],"6IEby":[function(require,module,exports,__globalThis) {
 /*! p5.js v1.11.8 June 05, 2025 */ var global = arguments[3];
 !function(e1) {
     module.exports = e1();
@@ -33630,62 +33646,74 @@ new (0, _p5Default.default)((sk)=>{
     ])(267);
 });
 
-},{}],"gv1qp":[function(require,module,exports,__globalThis) {
+},{}],"660ov":[function(require,module,exports,__globalThis) {
 var parcelHelpers = require("@parcel/transformer-js/src/esmodule-helpers.js");
 parcelHelpers.defineInteropFlag(exports);
 parcelHelpers.export(exports, "mediaPipe", ()=>mediaPipe);
 var _tasksVision = require("@mediapipe/tasks-vision");
-const MODEL_URL = "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/latest/hand_landmarker.task";
+const MODEL_URL = "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/latest/pose_landmarker_full.task";
+// Use CDN with the exact version we have installed
 const MODEL_URL_WASM = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm";
-const NUM_HANDS = 2;
+const NUM_POSES = 1;
 const RUNNING_MODE = "VIDEO";
-let handLandmarker;
+let poseLandmarker;
 let lastVideoTime = -1;
 const mediaPipe = {
-    handednesses: [],
     landmarks: [],
     worldLandmarks: [],
     isInitialized: false,
     initialize: async ()=>{
         try {
-            console.log("Starting MediaPipe initialization...");
+            console.log("Initializing pose model...");
             const vision = await (0, _tasksVision.FilesetResolver).forVisionTasks(MODEL_URL_WASM);
-            handLandmarker = await (0, _tasksVision.HandLandmarker).createFromOptions(vision, {
+            poseLandmarker = await (0, _tasksVision.PoseLandmarker).createFromOptions(vision, {
                 baseOptions: {
                     modelAssetPath: MODEL_URL,
                     delegate: "GPU"
                 },
                 runningMode: RUNNING_MODE,
-                numHands: NUM_HANDS,
-                minHandDetectionConfidence: 0.3,
-                minHandPresenceConfidence: 0.2,
-                minTrackingConfidence: 0.3
+                numPoses: NUM_POSES
             });
+            console.log("Pose model initialized successfully");
             mediaPipe.isInitialized = true;
-            console.log("MediaPipe HandLandmarker initialized successfully");
         } catch (error) {
-            console.error("Failed to initialize HandLandmarker:", error);
+            console.error("Failed to initialize PoseLandmarker:", error);
         }
     },
-    predictWebcam: async (video)=>{
+    predict: (video)=>{
+        // Alias for predictWebcam to match the interface expected by videoFeedUtils
+        return mediaPipe.predictWebcam(video);
+    },
+    predictWebcam: (video)=>{
+        // Start the prediction loop without awaiting
+        console.log("Starting pose prediction for video:", video);
+        mediaPipe.predictWebcamAsync(video);
+    },
+    predictWebcamAsync: async (video)=>{
         try {
-            if (!mediaPipe.isInitialized) {
-                console.log("MediaPipe not initialized yet, skipping prediction");
-                window.requestAnimationFrame(()=>mediaPipe.predictWebcam(video));
+            if (!poseLandmarker) {
+                console.log("Pose model not initialized yet, skipping prediction");
+                window.requestAnimationFrame(()=>mediaPipe.predictWebcamAsync(video));
                 return;
             }
-            if (lastVideoTime !== video.elt.currentTime && handLandmarker) {
+            // Check if video element is ready
+            if (!video || !video.elt || video.elt.readyState < 2) {
+                console.log("Video not ready yet, readyState:", video?.elt?.readyState);
+                window.requestAnimationFrame(()=>mediaPipe.predictWebcamAsync(video));
+                return;
+            }
+            if (lastVideoTime !== video.elt.currentTime && poseLandmarker) {
                 lastVideoTime = video.elt.currentTime;
-                const results = await handLandmarker.detectForVideo(video.elt, performance.now());
+                const results = await poseLandmarker.detectForVideo(video.elt, performance.now());
                 if (results) {
-                    mediaPipe.handednesses = results.handednesses || [];
                     mediaPipe.landmarks = results.landmarks || [];
                     mediaPipe.worldLandmarks = results.worldLandmarks || [];
-                    // Debug output when landmarks are detected
-                    if (mediaPipe.landmarks.length > 0) console.log("MediaPipe detected", mediaPipe.landmarks.length, "hands");
+                    // Debug: Log detection results
+                    if (results.landmarks && results.landmarks.length > 0) console.log("Pose detected! Landmarks count:", results.landmarks[0].length);
+                    else console.log("No pose detected in frame");
                 }
             }
-            window.requestAnimationFrame(()=>mediaPipe.predictWebcam(video));
+            window.requestAnimationFrame(()=>mediaPipe.predictWebcamAsync(video));
         } catch (error) {
             console.error("Failed to predict webcam:", error);
         }
@@ -46952,14 +46980,17 @@ exports.export = function(dest, destName, get) {
 };
 
 },{}],"KriuE":[function(require,module,exports,__globalThis) {
-// Version 2.1 - 03.07.2025 - Gesture Recognizer
+// Version 2.1 - 03.07.2025 - Pose Model
 var parcelHelpers = require("@parcel/transformer-js/src/esmodule-helpers.js");
 parcelHelpers.defineInteropFlag(exports);
 parcelHelpers.export(exports, "initializeCamCapture", ()=>initializeCamCapture);
 parcelHelpers.export(exports, "updateFeedDimensions", ()=>updateFeedDimensions);
-function initializeCamCapture(sk, gesturePipe) {
-    const startGesturePrediction = ()=>{
-        if (gesturePipe?.isInitialized) gesturePipe.predictWebcam(camFeed);
+function initializeCamCapture(sk, poseModel) {
+    const startPosePrediction = ()=>{
+        if (poseModel?.isInitialized) {
+            console.log("Starting pose prediction...");
+            poseModel.predictWebcam(camFeed);
+        } else console.log("Pose model not initialized yet");
     };
     const camFeed = sk.createCapture({
         flipped: true,
@@ -46980,12 +47011,12 @@ function initializeCamCapture(sk, gesturePipe) {
         }
     }, ()=>{
         updateFeedDimensions(sk, camFeed, false);
-        startGesturePrediction();
+        startPosePrediction();
     });
     // Event listeners
     camFeed.elt.addEventListener("loadeddata", ()=>console.log(`Camera loaded: ${camFeed.elt.videoWidth}x${camFeed.elt.videoHeight}`));
     camFeed.elt.addEventListener("error", (e)=>console.error("Camera error:", e));
-    camFeed.elt.addEventListener("canplay", startGesturePrediction);
+    camFeed.elt.addEventListener("canplay", startPosePrediction);
     camFeed.elt.setAttribute("playsinline", "");
     camFeed.hide();
     return camFeed;
@@ -47014,39 +47045,6 @@ function updateFeedDimensions(sk, feed, fitToHeight = false) {
         y
     });
 }
-
-},{"@parcel/transformer-js/src/esmodule-helpers.js":"jnFvT"}],"lplXV":[function(require,module,exports,__globalThis) {
-var parcelHelpers = require("@parcel/transformer-js/src/esmodule-helpers.js");
-parcelHelpers.defineInteropFlag(exports);
-parcelHelpers.export(exports, "getLandmarks", ()=>getLandmarks);
-const getLandmarks = (sketch, mediaPipe, camFeed, indices, numHands = null)=>{
-    const mappedLandmarks = {};
-    if (mediaPipe.landmarks.length > 0) {
-        // Determine how many hands to process
-        const handsToProcess = numHands ? Math.min(numHands, mediaPipe.landmarks.length) : mediaPipe.landmarks.length;
-        for(let handIndex = 0; handIndex < handsToProcess; handIndex++){
-            const hand = mediaPipe.landmarks[handIndex];
-            if (hand) indices.forEach((index)=>{
-                if (hand[index]) {
-                    // Format based on number of hands requested
-                    let LMX, LMY;
-                    if (numHands === 1) {
-                        // Single hand: X8, Y8
-                        LMX = `X${index}`;
-                        LMY = `Y${index}`;
-                    } else {
-                        // Multiple hands: X8_hand0, Y8_hand0, X8_hand1, Y8_hand1
-                        LMX = `X${index}_hand${handIndex}`;
-                        LMY = `Y${index}_hand${handIndex}`;
-                    }
-                    mappedLandmarks[LMX] = sketch.map(hand[index].x, 1, 0, 0, camFeed.scaledWidth);
-                    mappedLandmarks[LMY] = sketch.map(hand[index].y, 0, 1, 0, camFeed.scaledHeight);
-                }
-            });
-        }
-    }
-    return mappedLandmarks;
-};
 
 },{"@parcel/transformer-js/src/esmodule-helpers.js":"jnFvT"}],"1X9hu":[function(require,module,exports,__globalThis) {
 // Creates a pulsing effect based on sine wave
@@ -47126,6 +47124,23 @@ const createTitleScreen = (title = "CHRONOTOPE", displayDuration = 2000, fadeDur
 },{"@parcel/transformer-js/src/esmodule-helpers.js":"jnFvT"}],"4FU6e":[function(require,module,exports,__globalThis) {
 module.exports = module.bundle.resolve("MonaspaceNeon-WideExtraLight.5208ae0a.otf") + "?" + Date.now();
 
-},{}]},["2aZ6o","8JWvp"], "8JWvp", "parcelRequire94c2", {}, "./", "/")
+},{}],"gNlhQ":[function(require,module,exports,__globalThis) {
+var parcelHelpers = require("@parcel/transformer-js/src/esmodule-helpers.js");
+parcelHelpers.defineInteropFlag(exports);
+parcelHelpers.export(exports, "getMappedLandmarks", ()=>getMappedLandmarks);
+const getMappedLandmarks = (sketch, mediaPipe, camFeed, indices)=>{
+    const mappedLandmarks = {};
+    if (mediaPipe.landmarks.length > 0 && mediaPipe.landmarks[0]) indices.forEach((index)=>{
+        if (mediaPipe.landmarks[0][index]) {
+            const LMX = `X${index}`;
+            const LMY = `Y${index}`;
+            mappedLandmarks[LMX] = sketch.map(mediaPipe.landmarks[0][index].x, 1, 0, 0, camFeed.scaledWidth);
+            mappedLandmarks[LMY] = sketch.map(mediaPipe.landmarks[0][index].y, 0, 1, 0, camFeed.scaledHeight);
+        }
+    });
+    return mappedLandmarks;
+};
+
+},{"@parcel/transformer-js/src/esmodule-helpers.js":"jnFvT"}]},["2aZ6o","8JWvp"], "8JWvp", "parcelRequire94c2", {}, "./", "/")
 
 //# sourceMappingURL=p5_Joiner.c6396971.js.map

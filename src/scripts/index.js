@@ -1,7 +1,7 @@
 import p5 from "p5";
-import { mediaPipe as handModel } from "./handsModel";
+import { mediaPipe as poseModel } from "./poseModel";
 import { initializeCamCapture, updateFeedDimensions } from "./videoFeedUtils";
-import { getLandmarks } from "./multiLandmarksHandler";
+import { getMappedLandmarks } from "./landmarksHandler";
 import { createAveragePosition, createTitleScreen } from "./utils";
 import fontUrl from "../assets/fonts/MonaspaceNeon-WideExtraLight.otf";
 
@@ -17,8 +17,7 @@ new p5((sk) => {
 
   // State variables
   let camFeed,
-    snapshots = [],
-    useCloseGesture = true;
+    snapshots = [];
   let selectingFrameCount = 0,
     releasedFrameCount = 0,
     confirmedGesture = "released";
@@ -55,79 +54,75 @@ new p5((sk) => {
       customFont
     );
 
-    handModel.initialize();
-    camFeed = initializeCamCapture(sk, handModel);
-    const toggleSwitch = document.getElementById("checkboxInput");
-    const toggleText = document.getElementById("toggleText");
-    toggleSwitch.addEventListener("change", () => {
-      useCloseGesture = !toggleSwitch.checked;
-      toggleText.textContent = useCloseGesture ? "NEAR" : "FAR";
-    });
+    poseModel.initialize();
+    camFeed = initializeCamCapture(sk, poseModel);
   };
 
-  function detectCloseHandGesture(LM) {
-    const baseCentroidThreshold = 24;
-    const referenceHandSize = 128;
+  function detectPoseGesture(LM) {
+    const gestureThreshold = 50;
 
     if (
-      LM.X4 !== undefined &&
-      LM.X8 !== undefined &&
+      LM.X20 !== undefined &&
+      LM.X11 !== undefined &&
       LM.X12 !== undefined &&
-      LM.X0 !== undefined
+      LM.X19 !== undefined
     ) {
-      const handSize = sk.dist(LM.X0, LM.Y0, LM.X12, LM.Y12);
-      const dynamicThreshold =
-        (handSize / referenceHandSize) * baseCentroidThreshold;
-
+      // Calculate centroid of points 11 and 12
       const centroid = {
-        x: (LM.X4 + LM.X8 + LM.X12) / 3,
-        y: (LM.Y4 + LM.Y8 + LM.Y12) / 3,
+        x: (LM.X11 + LM.X12) / 2,
+        y: (LM.Y11 + LM.Y12) / 2,
       };
 
-      const dThumbToCentroid = sk.dist(LM.X4, LM.Y4, centroid.x, centroid.y);
-      const dIndexToCentroid = sk.dist(LM.X8, LM.Y8, centroid.x, centroid.y);
-      const dMiddleToCentroid = sk.dist(LM.X12, LM.Y12, centroid.x, centroid.y);
+      // Calculate distances from points 20 and 19 to centroid
+      const d20ToCentroid = sk.dist(LM.X20, LM.Y20, centroid.x, centroid.y);
+      const d19ToCentroid = sk.dist(LM.X19, LM.Y19, centroid.x, centroid.y);
 
-      if (
-        dThumbToCentroid < dynamicThreshold &&
-        dIndexToCentroid < dynamicThreshold &&
-        dMiddleToCentroid < dynamicThreshold
-      ) {
-        return { gesture: "selecting", centroid };
+      let selectionPoint = null;
+      let isSelecting = false;
+
+      // When 20 is touching centroid, use 19 for selection
+      if (d20ToCentroid < gestureThreshold) {
+        selectionPoint = { x: LM.X19, y: LM.Y19 };
+        isSelecting = true;
+      }
+      // When 19 is touching centroid, use 20 for selection
+      else if (d19ToCentroid < gestureThreshold) {
+        selectionPoint = { x: LM.X20, y: LM.Y20 };
+        isSelecting = true;
       }
 
-      return { gesture: "released", centroid };
-    }
-    return { gesture: "released", centroid: null };
-  }
-
-  function detectFarHandGesture(LM) {
-    const gestureThreshold = 96;
-    if (LM.X8_hand0 && LM.X8_hand1) {
-      const X8_1 = avg("x8_hand1", LM.X8_hand0);
-      const Y8_1 = avg("y8_hand1", LM.Y8_hand0);
-      const X8_2 = avg("x8_hand2", LM.X8_hand1);
-      const Y8_2 = avg("y8_hand2", LM.Y8_hand1);
-
-      const centroid = {
-        x: (X8_1 + X8_2) / 2,
-        y: (Y8_1 + Y8_2) / 2,
-      };
-
-      const distance = sk.dist(X8_1, Y8_1, X8_2, Y8_2);
-
-      if (distance < gestureThreshold) {
+      if (isSelecting) {
         return {
           gesture: "selecting",
-          centroid,
-          landmarks: { X8_1, Y8_1, X8_2, Y8_2 },
+          centroid: selectionPoint, // Use the selection point as the centroid for interaction
+          landmarks: {
+            X20: LM.X20,
+            Y20: LM.Y20,
+            X11: LM.X11,
+            Y11: LM.Y11,
+            X12: LM.X12,
+            Y12: LM.Y12,
+            X19: LM.X19,
+            Y19: LM.Y19,
+            actualCentroid: centroid, // Keep the actual centroid for reference
+            selectionPoint: selectionPoint,
+          },
         };
       }
 
       return {
         gesture: "released",
         centroid,
-        landmarks: { X8_1, Y8_1, X8_2, Y8_2 },
+        landmarks: {
+          X20: LM.X20,
+          Y20: LM.Y20,
+          X11: LM.X11,
+          Y11: LM.Y11,
+          X12: LM.X12,
+          Y12: LM.Y12,
+          X19: LM.X19,
+          Y19: LM.Y19,
+        },
       };
     }
     return { gesture: "released", centroid: null, landmarks: null };
@@ -141,7 +136,7 @@ new p5((sk) => {
       camFeed.elt.videoWidth > 0 &&
       camFeed.elt.videoHeight > 0 &&
       !camFeed.elt.paused;
-    const model = handModel && handModel.isInitialized;
+    const model = poseModel && poseModel.isInitialized;
     return cam && model;
   }
 
@@ -210,28 +205,14 @@ new p5((sk) => {
     // Check if landmark touches button
     const inButton =
       landmarks &&
-      ((useCloseGesture &&
-        ((landmarks.X4 >= buttonX &&
-          landmarks.X4 <= buttonX + buttonWidth &&
-          landmarks.Y4 >= buttonY &&
-          landmarks.Y4 <= buttonY + buttonHeight) ||
-          (landmarks.X8 >= buttonX &&
-            landmarks.X8 <= buttonX + buttonWidth &&
-            landmarks.Y8 >= buttonY &&
-            landmarks.Y8 <= buttonY + buttonHeight) ||
-          (landmarks.X12 >= buttonX &&
-            landmarks.X12 <= buttonX + buttonWidth &&
-            landmarks.Y12 >= buttonY &&
-            landmarks.Y12 <= buttonY + buttonHeight))) ||
-        (!useCloseGesture &&
-          ((landmarks.X8_hand0 >= buttonX &&
-            landmarks.X8_hand0 <= buttonX + buttonWidth &&
-            landmarks.Y8_hand0 >= buttonY &&
-            landmarks.Y8_hand0 <= buttonY + buttonHeight) ||
-            (landmarks.X8_hand1 >= buttonX &&
-              landmarks.X8_hand1 <= buttonX + buttonWidth &&
-              landmarks.Y8_hand1 >= buttonY &&
-              landmarks.Y8_hand1 <= buttonY + buttonHeight))));
+      ((landmarks.X20 >= buttonX &&
+        landmarks.X20 <= buttonX + buttonWidth &&
+        landmarks.Y20 >= buttonY &&
+        landmarks.Y20 <= buttonY + buttonHeight) ||
+        (landmarks.X19 >= buttonX &&
+          landmarks.X19 <= buttonX + buttonWidth &&
+          landmarks.Y19 >= buttonY &&
+          landmarks.Y19 <= buttonY + buttonHeight));
 
     // Draw button
     const opacity = inButton ? 255 : 5;
@@ -270,15 +251,21 @@ new p5((sk) => {
     sk.image(camFeed, 0, 0, camFeed.scaledWidth, camFeed.scaledHeight);
 
     let LM, gestureResult;
-    if (useCloseGesture) {
-      const landmarksIndex = [4, 8, 12, 0];
-      LM = getLandmarks(sk, handModel, camFeed, landmarksIndex, 1);
-      gestureResult = detectCloseHandGesture(LM);
-    } else {
-      const landmarksIndex = [8];
-      LM = getLandmarks(sk, handModel, camFeed, landmarksIndex, 2);
-      gestureResult = detectFarHandGesture(LM);
-    }
+    const landmarksIndex = [20, 11, 12, 19];
+    LM = getMappedLandmarks(sk, poseModel, camFeed, landmarksIndex, 1);
+
+    // Debug logging
+    console.log(
+      "Raw pose landmarks:",
+      poseModel.landmarks.length > 0 ? poseModel.landmarks[0] : "No landmarks"
+    );
+    console.log("Mapped landmarks:", LM);
+    console.log("X20:", LM.X20, "Y20:", LM.Y20);
+    console.log("X19:", LM.X19, "Y19:", LM.Y19);
+    console.log("X11:", LM.X11, "Y11:", LM.Y11);
+    console.log("X12:", LM.X12, "Y12:", LM.Y12);
+
+    gestureResult = detectPoseGesture(LM);
 
     const centroid = gestureResult.centroid;
     const gesture = gestureResult.gesture;
@@ -391,75 +378,105 @@ new p5((sk) => {
       sk.pop();
     }
 
-    // Draw individual landmarks for close gesture mode
-    if (useCloseGesture && LM) {
+    // Draw points 20, 19, and the centroid between 11 and 12
+    if (LM && landmarks) {
       sk.push();
-      sk.fill(255);
       sk.noStroke();
 
-      // Apply averaging to reduce jitter
-      const X4 = avg("x4_close", LM.X4);
-      const Y4 = avg("y4_close", LM.Y4);
-      const X8 = avg("x8_close", LM.X8);
-      const Y8 = avg("y8_close", LM.Y8);
-      const X12 = avg("x12_close", LM.X12);
-      const Y12 = avg("y12_close", LM.Y12);
+      // Directly use LM values (no averaging) for debug visibility
+      const X20 = LM.X20;
+      const Y20 = LM.Y20;
+      const X19 = LM.X19;
+      const Y19 = LM.Y19;
+      const X11 = LM.X11;
+      const Y11 = LM.Y11;
+      const X12 = LM.X12;
+      const Y12 = LM.Y12;
 
-      // Draw finger landmarks with smoothing
-      const landmarks = [
-        { x: X4, y: Y4 }, // Thumb
-        { x: X8, y: Y8 }, // Index
-        { x: X12, y: Y12 }, // Middle
-      ];
+      // Centroid between 11 and 12
+      const centroidX = (X11 + X12) / 2;
+      const centroidY = (Y11 + Y12) / 2;
 
-      landmarks.forEach(({ x, y }) => {
-        if (x !== undefined && y !== undefined) {
-          sk.ellipse(x, y, 12);
+      // Calculate distances to determine which point is touching centroid
+      const d20ToCentroid = sk.dist(X20, Y20, centroidX, centroidY);
+      const d19ToCentroid = sk.dist(X19, Y19, centroidX, centroidY);
+      const gestureThreshold = 50;
+
+      // Determine visual states based on gesture logic
+      const is20TouchingCentroid = d20ToCentroid < gestureThreshold;
+      const is19TouchingCentroid = d19ToCentroid < gestureThreshold;
+      const isPoint20Selection = is19TouchingCentroid && !is20TouchingCentroid; // 20 is selection when 19 touches
+      const isPoint19Selection = is20TouchingCentroid && !is19TouchingCentroid; // 19 is selection when 20 touches
+
+      // Draw point 20 (red, with different styles based on state)
+      if (X20 !== undefined && Y20 !== undefined) {
+        sk.stroke(0);
+        sk.strokeWeight(4);
+        if (is20TouchingCentroid) {
+          // Point 20 is touching centroid - bright red with thick outline
+          sk.fill(255, 50, 50);
+          sk.strokeWeight(6);
+        } else if (isPoint20Selection) {
+          // Point 20 is the selection point - pulsing red
+          const pulse = sk.sin(sk.millis() * 0.01) * 0.3 + 0.7;
+          sk.fill(255 * pulse, 0, 0);
+          sk.strokeWeight(5);
+        } else {
+          // Point 20 is neutral
+          sk.fill(255, 0, 0);
         }
-      });
-
-      sk.pop();
-    }
-
-    if (!useCloseGesture && landmarks) {
-      sk.push();
-      if (displayCentroid) {
-        const centroidRadius = 12;
-        const dx = landmarks.X8_2 - landmarks.X8_1;
-        const dy = landmarks.Y8_2 - landmarks.Y8_1;
-        const lineLength = Math.sqrt(dx * dx + dy * dy);
-        const unitX = dx / lineLength;
-        const unitY = dy / lineLength;
-        const dist1 = sk.dist(
-          landmarks.X8_1,
-          landmarks.Y8_1,
-          displayCentroid.x,
-          displayCentroid.y
-        );
-        const dist2 = sk.dist(
-          landmarks.X8_2,
-          landmarks.Y8_2,
-          displayCentroid.x,
-          displayCentroid.y
-        );
-        const stopDistance = centroidRadius;
-        const newX1 = landmarks.X8_1 + unitX * (dist1 - stopDistance);
-        const newY1 = landmarks.Y8_1 + unitY * (dist1 - stopDistance);
-        const newX2 = landmarks.X8_2 - unitX * (dist2 - stopDistance);
-        const newY2 = landmarks.Y8_2 - unitY * (dist2 - stopDistance);
-        sk.stroke(255);
-        sk.strokeWeight(2);
-        sk.line(landmarks.X8_1, landmarks.Y8_1, newX1, newY1);
-        sk.line(newX2, newY2, landmarks.X8_2, landmarks.Y8_2);
-      } else {
-        sk.stroke(255);
-        sk.strokeWeight(2);
-        sk.line(landmarks.X8_1, landmarks.Y8_1, landmarks.X8_2, landmarks.Y8_2);
+        sk.ellipse(X20, Y20, 28, 28);
       }
-      sk.fill(255);
-      sk.noStroke();
-      sk.ellipse(landmarks.X8_1, landmarks.Y8_1, 12);
-      sk.ellipse(landmarks.X8_2, landmarks.Y8_2, 12);
+
+      // Draw point 19 (green, with different styles based on state)
+      if (X19 !== undefined && Y19 !== undefined) {
+        sk.stroke(0);
+        sk.strokeWeight(4);
+        if (is19TouchingCentroid) {
+          // Point 19 is touching centroid - bright green with thick outline
+          sk.fill(50, 255, 50);
+          sk.strokeWeight(6);
+        } else if (isPoint19Selection) {
+          // Point 19 is the selection point - pulsing green
+          const pulse = sk.sin(sk.millis() * 0.01) * 0.3 + 0.7;
+          sk.fill(0, 255 * pulse, 0);
+          sk.strokeWeight(5);
+        } else {
+          // Point 19 is neutral
+          sk.fill(0, 255, 0);
+        }
+        sk.ellipse(X19, Y19, 28, 28);
+      }
+
+      // Draw centroid between 11 and 12 (blue, larger when being touched)
+      if (centroidX !== undefined && centroidY !== undefined) {
+        sk.stroke(0);
+        sk.strokeWeight(4);
+        if (is20TouchingCentroid || is19TouchingCentroid) {
+          // Centroid is being touched - larger and brighter
+          sk.fill(100, 200, 255);
+          sk.strokeWeight(6);
+          sk.ellipse(centroidX, centroidY, 36, 36);
+        } else {
+          // Centroid is neutral
+          sk.fill(0, 128, 255);
+          sk.ellipse(centroidX, centroidY, 28, 28);
+        }
+      }
+
+      // Draw connection lines to show the gesture state
+      if (is20TouchingCentroid && isPoint19Selection) {
+        // Draw line from 20 to centroid (touching) and highlight 19 as selection
+        sk.stroke(255, 100, 100);
+        sk.strokeWeight(3);
+        sk.line(X20, Y20, centroidX, centroidY);
+      } else if (is19TouchingCentroid && isPoint20Selection) {
+        // Draw line from 19 to centroid (touching) and highlight 20 as selection
+        sk.stroke(100, 255, 100);
+        sk.strokeWeight(3);
+        sk.line(X19, Y19, centroidX, centroidY);
+      }
+
       sk.pop();
     }
 
