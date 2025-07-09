@@ -732,8 +732,8 @@ new (0, _p5Default.default)((sk)=>{
                 isSelecting = true;
             } else if (d19ToCentroid < gestureThreshold) {
                 selectionPoint = {
-                    x: X20,
-                    y: Y20
+                    x: LM.X20,
+                    y: LM.Y20
                 };
                 isSelecting = true;
             }
@@ -741,14 +741,14 @@ new (0, _p5Default.default)((sk)=>{
                 gesture: "selecting",
                 centroid: selectionPoint,
                 landmarks: {
-                    X20: X20,
-                    Y20: Y20,
-                    X11: X11,
-                    Y11: Y11,
-                    X12: X12,
-                    Y12: Y12,
-                    X19: X19,
-                    Y19: Y19,
+                    X20: LM.X20,
+                    Y20: LM.Y20,
+                    X11: LM.X11,
+                    Y11: LM.Y11,
+                    X12: LM.X12,
+                    Y12: LM.Y12,
+                    X19: LM.X19,
+                    Y19: LM.Y19,
                     actualCentroid: centroid,
                     selectionPoint: selectionPoint
                 }
@@ -757,14 +757,14 @@ new (0, _p5Default.default)((sk)=>{
                 gesture: "released",
                 centroid,
                 landmarks: {
-                    X20: X20,
-                    Y20: Y20,
-                    X11: X11,
-                    Y11: Y11,
-                    X12: X12,
-                    Y12: Y12,
-                    X19: X19,
-                    Y19: Y19
+                    X20: LM.X20,
+                    Y20: LM.Y20,
+                    X11: LM.X11,
+                    Y11: LM.Y11,
+                    X12: LM.X12,
+                    Y12: LM.Y12,
+                    X19: LM.X19,
+                    Y19: LM.Y19
                 }
             };
         }
