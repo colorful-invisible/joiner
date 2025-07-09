@@ -705,27 +705,35 @@ new (0, _p5Default.default)((sk)=>{
     function detectPoseGesture(LM) {
         const gestureThreshold = 50;
         if (LM.X20 !== undefined && LM.X11 !== undefined && LM.X12 !== undefined && LM.X19 !== undefined) {
+            let X11 = avg("X11", LM.X11);
+            let Y11 = avg("Y11", LM.Y11);
+            let X12 = avg("X12", LM.X12);
+            let Y12 = avg("Y12", LM.Y12);
+            let X19 = avg("X19", LM.X19);
+            let Y19 = avg("Y19", LM.Y19);
+            let X20 = avg("X20", LM.X20);
+            let Y20 = avg("Y20", LM.Y20);
             // Calculate centroid of points 11 and 12
             const centroid = {
-                x: (LM.X11 + LM.X12) / 2,
-                y: (LM.Y11 + LM.Y12) / 2
+                x: (X11 + X12) / 2,
+                y: (Y11 + Y12) / 2
             };
             // Calculate distances from points 20 and 19 to centroid
-            const d20ToCentroid = sk.dist(LM.X20, LM.Y20, centroid.x, centroid.y);
-            const d19ToCentroid = sk.dist(LM.X19, LM.Y19, centroid.x, centroid.y);
+            const d20ToCentroid = sk.dist(X20, Y20, centroid.x, centroid.y);
+            const d19ToCentroid = sk.dist(X19, Y19, centroid.x, centroid.y);
             let selectionPoint = null;
             let isSelecting = false;
             // When 20 is touching centroid, use 19 for selection
             if (d20ToCentroid < gestureThreshold) {
                 selectionPoint = {
-                    x: LM.X19,
-                    y: LM.Y19
+                    x: X19,
+                    y: Y19
                 };
                 isSelecting = true;
             } else if (d19ToCentroid < gestureThreshold) {
                 selectionPoint = {
-                    x: LM.X20,
-                    y: LM.Y20
+                    x: X20,
+                    y: Y20
                 };
                 isSelecting = true;
             }
@@ -733,14 +741,14 @@ new (0, _p5Default.default)((sk)=>{
                 gesture: "selecting",
                 centroid: selectionPoint,
                 landmarks: {
-                    X20: LM.X20,
-                    Y20: LM.Y20,
-                    X11: LM.X11,
-                    Y11: LM.Y11,
-                    X12: LM.X12,
-                    Y12: LM.Y12,
-                    X19: LM.X19,
-                    Y19: LM.Y19,
+                    X20: X20,
+                    Y20: Y20,
+                    X11: X11,
+                    Y11: Y11,
+                    X12: X12,
+                    Y12: Y12,
+                    X19: X19,
+                    Y19: Y19,
                     actualCentroid: centroid,
                     selectionPoint: selectionPoint
                 }
@@ -749,14 +757,14 @@ new (0, _p5Default.default)((sk)=>{
                 gesture: "released",
                 centroid,
                 landmarks: {
-                    X20: LM.X20,
-                    Y20: LM.Y20,
-                    X11: LM.X11,
-                    Y11: LM.Y11,
-                    X12: LM.X12,
-                    Y12: LM.Y12,
-                    X19: LM.X19,
-                    Y19: LM.Y19
+                    X20: X20,
+                    Y20: Y20,
+                    X11: X11,
+                    Y11: Y11,
+                    X12: X12,
+                    Y12: Y12,
+                    X19: X19,
+                    Y19: Y19
                 }
             };
         }
