@@ -1,0 +1,88 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  font-size: 20px;
+}
+
+main {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+}
+
+canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: -1;
+}
+
+.model-toggle {
+  position: fixed;
+  bottom: 1.125rem;
+  right: 1.125rem;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  opacity: 0.05;
+}
+
+.model-toggle:hover {
+  opacity: 1;
+  transition: opacity 0.3s ease-in-out;
+}
+
+.toggle-text {
+  color: white;
+  font-size: 20px;
+  font-family: Helvetica, Arial, sans-serif;
+}
+
+/* To hide the checkbox */
+#checkboxInput {
+  display: none;
+}
+
+.toggleSwitch {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  width: 50px;
+  height: 30px;
+  border-radius: 20px;
+  border: 2px solid rgba(255, 255, 255);
+  cursor: pointer;
+  transition-duration: 0.2s;
+}
+
+.toggleSwitch::after {
+  content: "";
+  position: absolute;
+  height: 10px;
+  width: 10px;
+  left: 5px;
+  background-color: transparent;
+  border-radius: 50%;
+  transition-duration: 0.2s;
+
+  border: 5px solid white;
+}
+
+#checkboxInput:checked + .toggleSwitch::after {
+  transform: translateX(100%);
+  transition-duration: 0.2s;
+  background-color: rgb(255, 255, 255);
+}
+
+/* Switch background change */
+#checkboxInput:checked + .toggleSwitch {
+  transition-duration: 0.2s;
+}
