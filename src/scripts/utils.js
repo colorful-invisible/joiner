@@ -25,7 +25,7 @@ const createAveragePosition = (size = 3) => {
 };
 
 // Creates title screen with configurable display and fade durations
-// Usage: const titleScreen = createTitleScreen("My Game", 3000, 1500, font);
+// Usage: const titleScreen = createTitleScreen("My Title", 3000, 1500, font);
 const createTitleScreen = (
   title = "CHRONOTOPE",
   displayDuration = 2000,

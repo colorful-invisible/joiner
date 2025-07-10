@@ -15,6 +15,10 @@ new p5((sk) => {
     fadeDuration = 10000,
     fadeEnabled = true;
 
+  // Helpers
+  const avg = createAveragePosition(12);
+  let titleScreen;
+
   // State variables
   let camFeed,
     snapshots = [];
@@ -29,13 +33,7 @@ new p5((sk) => {
     developmentStartTime = null,
     pendingCapture = null,
     flash = null;
-
-  // Font loading
   let customFont;
-
-  // Helpers
-  const avg = createAveragePosition(6);
-  let titleScreen;
 
   sk.preload = () => {
     customFont = sk.loadFont(fontUrl);
@@ -43,13 +41,11 @@ new p5((sk) => {
 
   sk.setup = () => {
     sk.createCanvas(sk.windowWidth, sk.windowHeight);
-    sk.textSize(20);
-    sk.textAlign(sk.CENTER, sk.CENTER);
 
     // Create title screen with custom font
     titleScreen = createTitleScreen(
       "CHRONOTOPE #1 - FRAGMENTS",
-      2000,
+      1500,
       500,
       customFont
     );
@@ -58,8 +54,8 @@ new p5((sk) => {
     camFeed = initializeCamCapture(sk, poseModel);
   };
 
-  function detectPoseGesture(LM) {
-    const gestureThreshold = 50;
+  function processLandmarks(LM) {
+    const gestureThreshold = 96;
 
     if (
       LM.X20 !== undefined &&
@@ -67,74 +63,89 @@ new p5((sk) => {
       LM.X12 !== undefined &&
       LM.X19 !== undefined
     ) {
-      let X11 = avg("X11", LM.X11);
-      let Y11 = avg("Y11", LM.Y11);
-      let X12 = avg("X12", LM.X12);
-      let Y12 = avg("Y12", LM.Y12);
-      let X19 = avg("X19", LM.X19);
-      let Y19 = avg("Y19", LM.Y19);
-      let X20 = avg("X20", LM.X20);
-      let Y20 = avg("Y20", LM.Y20);
+      // Apply averaging to all landmarks
+      const landmarks = {
+        X11: avg("X11", LM.X11),
+        Y11: avg("Y11", LM.Y11),
+        X12: avg("X12", LM.X12),
+        Y12: avg("Y12", LM.Y12),
+        X19: avg("X19", LM.X19),
+        Y19: avg("Y19", LM.Y19),
+        X20: avg("X20", LM.X20),
+        Y20: avg("Y20", LM.Y20),
+      };
 
       // Calculate centroid of points 11 and 12
-      const centroid = {
-        x: (X11 + X12) / 2,
-        y: (Y11 + Y12) / 2,
+      const actualCentroid = {
+        x: (landmarks.X11 + landmarks.X12) / 2,
+        y: (landmarks.Y11 + landmarks.Y12) / 2 + 80,
       };
 
       // Calculate distances from points 20 and 19 to centroid
-      const d20ToCentroid = sk.dist(X20, Y20, centroid.x, centroid.y);
-      const d19ToCentroid = sk.dist(X19, Y19, centroid.x, centroid.y);
+      const d20ToCentroid = sk.dist(
+        landmarks.X20,
+        landmarks.Y20,
+        actualCentroid.x,
+        actualCentroid.y
+      );
+      const d19ToCentroid = sk.dist(
+        landmarks.X19,
+        landmarks.Y19,
+        actualCentroid.x,
+        actualCentroid.y
+      );
+
+      // Determine visual and interaction states
+      const is20TouchingCentroid = d20ToCentroid < gestureThreshold;
+      const is19TouchingCentroid = d19ToCentroid < gestureThreshold;
+      const isPoint20Selection = is19TouchingCentroid && !is20TouchingCentroid;
+      const isPoint19Selection = is20TouchingCentroid && !is19TouchingCentroid;
 
       let selectionPoint = null;
       let isSelecting = false;
+      let gesture = "released";
+      let centroid = actualCentroid;
 
       // When 20 is touching centroid, use 19 for selection
-      if (d20ToCentroid < gestureThreshold) {
-        selectionPoint = { x: X19, y: Y19 };
+      if (is20TouchingCentroid) {
+        selectionPoint = { x: landmarks.X19, y: landmarks.Y19 };
         isSelecting = true;
+        gesture = "selecting";
+        centroid = selectionPoint; // Use selection point as centroid for interaction
       }
       // When 19 is touching centroid, use 20 for selection
-      else if (d19ToCentroid < gestureThreshold) {
-        selectionPoint = { x: LM.X20, y: LM.Y20 };
+      else if (is19TouchingCentroid) {
+        selectionPoint = { x: landmarks.X20, y: landmarks.Y20 };
         isSelecting = true;
-      }
-
-      if (isSelecting) {
-        return {
-          gesture: "selecting",
-          centroid: selectionPoint, // Use the selection point as the centroid for interaction
-          landmarks: {
-            X20: LM.X20,
-            Y20: LM.Y20,
-            X11: LM.X11,
-            Y11: LM.Y11,
-            X12: LM.X12,
-            Y12: LM.Y12,
-            X19: LM.X19,
-            Y19: LM.Y19,
-            actualCentroid: centroid, // Keep the actual centroid for reference
-            selectionPoint: selectionPoint,
-          },
-        };
+        gesture = "selecting";
+        centroid = selectionPoint; // Use selection point as centroid for interaction
       }
 
       return {
-        gesture: "released",
+        gesture,
         centroid,
         landmarks: {
-          X20: LM.X20,
-          Y20: LM.Y20,
-          X11: LM.X11,
-          Y11: LM.Y11,
-          X12: LM.X12,
-          Y12: LM.Y12,
-          X19: LM.X19,
-          Y19: LM.Y19,
+          ...landmarks,
+          actualCentroid,
+          selectionPoint,
+        },
+        visualStates: {
+          is20TouchingCentroid,
+          is19TouchingCentroid,
+          isPoint20Selection,
+          isPoint19Selection,
+          d20ToCentroid,
+          d19ToCentroid,
+          gestureThreshold,
         },
       };
     }
-    return { gesture: "released", centroid: null, landmarks: null };
+    return {
+      gesture: "released",
+      centroid: null,
+      landmarks: null,
+      visualStates: null,
+    };
   }
 
   function isExperienceReady() {
@@ -196,7 +207,98 @@ new p5((sk) => {
     }
   }
 
-  // Simple undo button
+  function drawLandmarkVisualization(landmarks, visualStates) {
+    if (!landmarks || !visualStates) return;
+
+    const { X20, Y20, X19, Y19, actualCentroid } = landmarks;
+    const {
+      is20TouchingCentroid,
+      is19TouchingCentroid,
+      isPoint20Selection,
+      isPoint19Selection,
+    } = visualStates;
+
+    const centroidX = actualCentroid.x;
+    const centroidY = actualCentroid.y;
+    const pulse = sk.sin(sk.millis() * 0.01) * 0.3 + 1.0;
+
+    // Draw point 20
+    if (X20 !== undefined && Y20 !== undefined) {
+      sk.push();
+      sk.noStroke();
+      if (is20TouchingCentroid) {
+        sk.fill(255); // White when touching
+        sk.ellipse(X20, Y20, 12 * pulse, 12 * pulse);
+      } else if (isPoint20Selection) {
+        // Yellow for selection start, red for valid selection
+        const w = selectionEnd
+          ? Math.abs(selectionStart.x - selectionEnd.x)
+          : 0;
+        const h = selectionEnd
+          ? Math.abs(selectionStart.y - selectionEnd.y)
+          : 0;
+        const isValid = w > minSnapshotSize || h > minSnapshotSize;
+        sk.fill(isValid ? sk.color(255, 0, 0) : sk.color(255, 255, 0));
+        sk.ellipse(X20, Y20, 12, 12);
+      } else {
+        sk.fill(255); // White when neutral
+        sk.ellipse(X20, Y20, 12, 12);
+      }
+      sk.pop();
+    }
+
+    // Draw point 19
+    if (X19 !== undefined && Y19 !== undefined) {
+      sk.push();
+      sk.noStroke();
+      if (is19TouchingCentroid) {
+        sk.fill(255); // White when touching
+        sk.ellipse(X19, Y19, 12 * pulse, 12 * pulse);
+      } else if (isPoint19Selection) {
+        // Yellow for selection start, red for valid selection
+        const w = selectionEnd
+          ? Math.abs(selectionStart.x - selectionEnd.x)
+          : 0;
+        const h = selectionEnd
+          ? Math.abs(selectionStart.y - selectionEnd.y)
+          : 0;
+        const isValid = w > minSnapshotSize || h > minSnapshotSize;
+        sk.fill(isValid ? sk.color(255, 0, 0) : sk.color(255, 255, 0));
+        sk.ellipse(X19, Y19, 12, 12);
+      } else {
+        sk.fill(255); // White when neutral
+        sk.ellipse(X19, Y19, 12, 12);
+      }
+      sk.pop();
+    }
+
+    // Draw centroid
+    if (centroidX !== undefined && centroidY !== undefined) {
+      sk.push();
+      sk.noStroke();
+      sk.fill(255); // Always white
+      const size =
+        is20TouchingCentroid || is19TouchingCentroid ? 24 * pulse : 24;
+      sk.ellipse(centroidX, centroidY, size, size);
+      sk.pop();
+    }
+
+    // Draw connection lines
+    if (is20TouchingCentroid) {
+      sk.push();
+      sk.stroke(255);
+      sk.strokeWeight(2);
+      sk.line(X20, Y20, centroidX, centroidY);
+      sk.pop();
+    } else if (is19TouchingCentroid) {
+      sk.push();
+      sk.stroke(255);
+      sk.strokeWeight(2);
+      sk.line(X19, Y19, centroidX, centroidY);
+      sk.pop();
+    }
+  }
+
   function handleUndoFunctionality(landmarks) {
     // State management
     if (!handleUndoFunctionality.triggered)
@@ -269,12 +371,8 @@ new p5((sk) => {
       poseModel.landmarks.length > 0 ? poseModel.landmarks[0] : "No landmarks"
     );
     console.log("Mapped landmarks:", LM);
-    console.log("X20:", LM.X20, "Y20:", LM.Y20);
-    console.log("X19:", LM.X19, "Y19:", LM.Y19);
-    console.log("X11:", LM.X11, "Y11:", LM.Y11);
-    console.log("X12:", LM.X12, "Y12:", LM.Y12);
 
-    gestureResult = detectPoseGesture(LM);
+    gestureResult = processLandmarks(LM);
 
     const centroid = gestureResult.centroid;
     const gesture = gestureResult.gesture;
@@ -349,7 +447,7 @@ new p5((sk) => {
     drawSelectionRect();
 
     // Handle undo functionality (draw on top of snapshots)
-    handleUndoFunctionality(LM);
+    handleUndoFunctionality(landmarks);
 
     if (flash) {
       const elapsed = sk.millis() - flash.flashStartTime;
@@ -387,107 +485,11 @@ new p5((sk) => {
       sk.pop();
     }
 
-    // Draw points 20, 19, and the centroid between 11 and 12
-    if (LM && landmarks) {
-      sk.push();
-      sk.noStroke();
-
-      // Directly use LM values (no averaging) for debug visibility
-      const X20 = LM.X20;
-      const Y20 = LM.Y20;
-      const X19 = LM.X19;
-      const Y19 = LM.Y19;
-      const X11 = LM.X11;
-      const Y11 = LM.Y11;
-      const X12 = LM.X12;
-      const Y12 = LM.Y12;
-
-      // Centroid between 11 and 12
-      const centroidX = (X11 + X12) / 2;
-      const centroidY = (Y11 + Y12) / 2;
-
-      // Calculate distances to determine which point is touching centroid
-      const d20ToCentroid = sk.dist(X20, Y20, centroidX, centroidY);
-      const d19ToCentroid = sk.dist(X19, Y19, centroidX, centroidY);
-      const gestureThreshold = 50;
-
-      // Determine visual states based on gesture logic
-      const is20TouchingCentroid = d20ToCentroid < gestureThreshold;
-      const is19TouchingCentroid = d19ToCentroid < gestureThreshold;
-      const isPoint20Selection = is19TouchingCentroid && !is20TouchingCentroid; // 20 is selection when 19 touches
-      const isPoint19Selection = is20TouchingCentroid && !is19TouchingCentroid; // 19 is selection when 20 touches
-
-      // Draw point 20 (red, with different styles based on state)
-      if (X20 !== undefined && Y20 !== undefined) {
-        sk.stroke(0);
-        sk.strokeWeight(4);
-        if (is20TouchingCentroid) {
-          // Point 20 is touching centroid - bright red with thick outline
-          sk.fill(255, 50, 50);
-          sk.strokeWeight(6);
-        } else if (isPoint20Selection) {
-          // Point 20 is the selection point - pulsing red
-          const pulse = sk.sin(sk.millis() * 0.01) * 0.3 + 0.7;
-          sk.fill(255 * pulse, 0, 0);
-          sk.strokeWeight(5);
-        } else {
-          // Point 20 is neutral
-          sk.fill(255, 0, 0);
-        }
-        sk.ellipse(X20, Y20, 28, 28);
-      }
-
-      // Draw point 19 (green, with different styles based on state)
-      if (X19 !== undefined && Y19 !== undefined) {
-        sk.stroke(0);
-        sk.strokeWeight(4);
-        if (is19TouchingCentroid) {
-          // Point 19 is touching centroid - bright green with thick outline
-          sk.fill(50, 255, 50);
-          sk.strokeWeight(6);
-        } else if (isPoint19Selection) {
-          // Point 19 is the selection point - pulsing green
-          const pulse = sk.sin(sk.millis() * 0.01) * 0.3 + 0.7;
-          sk.fill(0, 255 * pulse, 0);
-          sk.strokeWeight(5);
-        } else {
-          // Point 19 is neutral
-          sk.fill(0, 255, 0);
-        }
-        sk.ellipse(X19, Y19, 28, 28);
-      }
-
-      // Draw centroid between 11 and 12 (blue, larger when being touched)
-      if (centroidX !== undefined && centroidY !== undefined) {
-        sk.stroke(0);
-        sk.strokeWeight(4);
-        if (is20TouchingCentroid || is19TouchingCentroid) {
-          // Centroid is being touched - larger and brighter
-          sk.fill(100, 200, 255);
-          sk.strokeWeight(6);
-          sk.ellipse(centroidX, centroidY, 36, 36);
-        } else {
-          // Centroid is neutral
-          sk.fill(0, 128, 255);
-          sk.ellipse(centroidX, centroidY, 28, 28);
-        }
-      }
-
-      // Draw connection lines to show the gesture state
-      if (is20TouchingCentroid && isPoint19Selection) {
-        // Draw line from 20 to centroid (touching) and highlight 19 as selection
-        sk.stroke(255, 100, 100);
-        sk.strokeWeight(3);
-        sk.line(X20, Y20, centroidX, centroidY);
-      } else if (is19TouchingCentroid && isPoint20Selection) {
-        // Draw line from 19 to centroid (touching) and highlight 20 as selection
-        sk.stroke(100, 255, 100);
-        sk.strokeWeight(3);
-        sk.line(X19, Y19, centroidX, centroidY);
-      }
-
-      sk.pop();
-    }
+    // Draw landmark visualization
+    drawLandmarkVisualization(
+      gestureResult.landmarks,
+      gestureResult.visualStates
+    );
 
     if (
       isDeveloping &&
