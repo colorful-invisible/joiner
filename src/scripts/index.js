@@ -226,11 +226,7 @@ new p5((sk) => {
     if (X20 !== undefined && Y20 !== undefined) {
       sk.push();
       sk.noStroke();
-      if (is20TouchingCentroid) {
-        sk.fill(255); // White when touching
-        sk.ellipse(X20, Y20, 12 * pulse, 12 * pulse);
-      } else if (isPoint20Selection) {
-        // Yellow for selection start, red for valid selection
+      if (isPoint20Selection) {
         const w = selectionEnd
           ? Math.abs(selectionStart.x - selectionEnd.x)
           : 0;
@@ -240,8 +236,11 @@ new p5((sk) => {
         const isValid = w > minSnapshotSize || h > minSnapshotSize;
         sk.fill(isValid ? sk.color(255, 0, 0) : sk.color(255, 255, 0));
         sk.ellipse(X20, Y20, 12, 12);
+      } else if (is20TouchingCentroid) {
+        sk.fill(255);
+        sk.ellipse(X20, Y20, 12 * pulse, 12 * pulse);
       } else {
-        sk.fill(255); // White when neutral
+        sk.fill(255);
         sk.ellipse(X20, Y20, 12, 12);
       }
       sk.pop();
@@ -251,11 +250,7 @@ new p5((sk) => {
     if (X19 !== undefined && Y19 !== undefined) {
       sk.push();
       sk.noStroke();
-      if (is19TouchingCentroid) {
-        sk.fill(255); // White when touching
-        sk.ellipse(X19, Y19, 12 * pulse, 12 * pulse);
-      } else if (isPoint19Selection) {
-        // Yellow for selection start, red for valid selection
+      if (isPoint19Selection) {
         const w = selectionEnd
           ? Math.abs(selectionStart.x - selectionEnd.x)
           : 0;
@@ -265,8 +260,11 @@ new p5((sk) => {
         const isValid = w > minSnapshotSize || h > minSnapshotSize;
         sk.fill(isValid ? sk.color(255, 0, 0) : sk.color(255, 255, 0));
         sk.ellipse(X19, Y19, 12, 12);
+      } else if (is19TouchingCentroid) {
+        sk.fill(255);
+        sk.ellipse(X19, Y19, 12 * pulse, 12 * pulse);
       } else {
-        sk.fill(255); // White when neutral
+        sk.fill(255);
         sk.ellipse(X19, Y19, 12, 12);
       }
       sk.pop();
@@ -276,7 +274,7 @@ new p5((sk) => {
     if (centroidX !== undefined && centroidY !== undefined) {
       sk.push();
       sk.noStroke();
-      sk.fill(255); // Always white
+      sk.fill(255);
       const size =
         is20TouchingCentroid || is19TouchingCentroid ? 24 * pulse : 24;
       sk.ellipse(centroidX, centroidY, size, size);
@@ -402,7 +400,6 @@ new p5((sk) => {
         : releasedFrameCount <= FRAME_THRESHOLD
         ? lastCentroid
         : null;
-    const displayCentroid = centroid || lastCentroid;
 
     if (
       confirmedGesture === "selecting" &&
@@ -446,7 +443,6 @@ new p5((sk) => {
     drawSnapshots();
     drawSelectionRect();
 
-    // Handle undo functionality (draw on top of snapshots)
     handleUndoFunctionality(landmarks);
 
     if (flash) {
@@ -459,30 +455,6 @@ new p5((sk) => {
       } else {
         flash = null;
       }
-    }
-
-    if (displayCentroid) {
-      sk.push();
-      if (isSelecting) {
-        const currentW = selectionEnd
-          ? Math.abs(selectionStart.x - selectionEnd.x)
-          : 0;
-        const currentH = selectionEnd
-          ? Math.abs(selectionStart.y - selectionEnd.y)
-          : 0;
-        sk.fill(
-          currentW < minSnapshotSize && currentH < minSnapshotSize
-            ? sk.color(255, 255, 0)
-            : sk.color(255, 0, 0)
-        );
-        sk.noStroke();
-      } else {
-        sk.noFill();
-        sk.stroke(255);
-        sk.strokeWeight(2);
-      }
-      sk.ellipse(displayCentroid.x, displayCentroid.y, 24);
-      sk.pop();
     }
 
     // Draw landmark visualization
